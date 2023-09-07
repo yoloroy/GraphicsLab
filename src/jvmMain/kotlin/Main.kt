@@ -76,7 +76,21 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var magneticPointIndex by remember { mutableStateOf<Int?>(null) }
     val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
 
-    val nearestPoint by remember { derivedStateOf { cursorOffset?.let { points.nearestPointTo(it) } } }
+    if (!magnetizing) {
+        magneticPointIndex = null
+    }
+
+    val nearestPoint by remember {
+        derivedStateOf {
+            cursorOffset?.let {
+                magneticPoint?.let { magneticPoint ->
+                    (points - magneticPoint).nearestPointTo(it)
+                } ?: run {
+                    points.nearestPointTo(it)
+                }
+            }
+        }
+    }
     val nearestPointIndex by remember { derivedStateOf { nearestPoint?.let { points.indexOf(nearestPoint) } } }
 
     val copyAction = {
@@ -101,6 +115,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
+    val connectAction = connectAction@ {
+        if (!magnetizing) return@connectAction
+        nearestPointIndex?.let { connections += magneticPointIndex!! to it }
+    }
+
     LaunchedEffect(Unit) {
         keysGlobalFlow
             .filter(copyShortcutPredicate::test)
@@ -112,6 +131,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             .filter(pasteShortcutPredicate::test)
             .distinctUntilChanged()
             .onEach { pasteAction.invoke() }
+            .launchIn(coroutineScope)
+
+        keysGlobalFlow
+            .filter { it.key == Key.Spacebar }
+            .distinctUntilChanged()
+            .onEach { connectAction.invoke() }
             .launchIn(coroutineScope)
     }
 
@@ -170,10 +195,18 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 drawCircle(Color.Black, 4F, point)
             }
 
-            run {
-                val a = cursorOffset ?: return@run
-                val b = (if (magnetizing) magneticPoint else nearestPoint) ?: return@run
-                drawLine(Color.Black, a, b, pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F).takeUnless { magnetizing })
+            cursorOffset?.let { cursorOffset ->
+                magneticPoint?.let { magneticPoint ->
+                    drawLine(Color.Black, cursorOffset, magneticPoint)
+                }
+                nearestPoint?.let { nearestPoint ->
+                    drawLine(
+                        Color.Black,
+                        cursorOffset,
+                        nearestPoint,
+                        pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
+                    )
+                }
             }
         }
     }
