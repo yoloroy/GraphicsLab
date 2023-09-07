@@ -16,6 +16,7 @@ import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -69,17 +70,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     var points by remember { mutableStateOf(listOf<Offset>()) }
     var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
+
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
-
     var magnetizing by remember { mutableStateOf(true) }
     var magneticPointIndex by remember { mutableStateOf<Int?>(null) }
     val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
-
-    if (!magnetizing) {
-        magneticPointIndex = null
-    }
-
     val nearestPoint by remember {
         derivedStateOf {
             cursorOffset?.let {
@@ -93,6 +89,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
     val nearestPointIndex by remember { derivedStateOf { nearestPoint?.let { points.indexOf(nearestPoint) } } }
 
+    if (!magnetizing) {
+        magneticPointIndex = null
+    }
+
     val copyAction = {
         val encoded = Json.encodeToString(SaveState(
             points.map { XY.fromOffset(it) },
@@ -104,6 +104,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val pasteAction = {
         try {
             val loadedState = Json.decodeFromString<SaveState>(clipboardManager.getText()?.text ?: SaveState.EMPTY_JSON)
+
+            if (loadedState.connections.any { it !in loadedState.points.indices }) {
+                throw IllegalArgumentException("Bad indices in connections of pasted Json")
+            }
+
             points = loadedState.points.map { it.toOffset() }
             connections = loadedState.connections.chunked(2) { it[0] to it[1] }
             magnetizing = false
@@ -112,12 +117,36 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             e.printStackTrace()
         } catch (e: IllegalStateException) {
             e.printStackTrace()
+        } catch (e: IllegalArgumentException) {
+            println(e.message)
         }
     }
 
     val connectAction = connectAction@ {
         if (!magnetizing) return@connectAction
         nearestPointIndex?.let { connections += magneticPointIndex!! to it }
+    }
+
+    val toggleMagnetizingAction = {
+        nearestPointIndex.takeUnless { magnetizing }?.let { i ->
+            magnetizing = true
+            magneticPointIndex = i
+        } ?: run {
+            magnetizing = false
+        }
+    }
+
+    val consumePrimaryClick = { clickOffset: Offset ->
+        magneticPointIndex.takeIf { magnetizing }?.let {
+            connections += (it to points.size)
+        }
+        points += clickOffset
+        magneticPointIndex = points.lastIndex
+        magnetizing = true
+    }
+
+    val consumeCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
+        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
     }
 
     LaunchedEffect(Unit) {
@@ -154,42 +183,17 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     MaterialTheme {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .onPointerEvent(PointerEventType.Move) {
-                    cursorOffset = it.changes.first().position
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures { tapOffset ->
-                        magneticPointIndex.takeIf { magnetizing }?.let {
-                            connections += (it to points.size)
-                        }
-                        points += tapOffset
-                        magneticPointIndex = points.lastIndex
-                        magnetizing = true
-                    }
-                }
-                .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary)) {
-                    if (magnetizing) {
-                        magnetizing = false
-                    } else nearestPointIndex?.let { i ->
-                        magnetizing = true
-                        magneticPointIndex = i
-                    }
-                }
-                .onGloballyPositioned {
-                    canvasSize = Offset(it.size.width.toFloat(), it.size.height.toFloat())
-                }
-                .onKeyEvent {
-                    println("key event happened")
-                    return@onKeyEvent true
-                }
+        Canvas(Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
+            .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
+            .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
+            .onGloballyPositioned(consumeCanvasSizeUpdate)
         ) {
-            connections
-                .map { (ai, bi) -> points[ai] to points[bi] }
-                .forEach { (a, b) -> drawLine(Color.Black, a, b) }
+            for ((ai, bi) in connections) {
+                drawLine(Color.Black, points[ai], points[bi])
+            }
 
             for (point in points) {
                 drawCircle(Color.Black, 4F, point)
