@@ -36,6 +36,8 @@ import util.emitter
 import util.returning
 import java.util.function.Predicate
 
+const val IS_TRANSPARENT_BUILD = false
+
 val copyShortcutPredicate: Predicate<KeyEvent> = run {
     when (currentOs) {
         OS.MAC -> Predicate { it.isMetaPressed && it.key == Key.C }
@@ -65,6 +67,13 @@ context(FrameWindowScope)
 @Preview
 fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val coroutineScope = rememberCoroutineScope()
+    val observeKeys = { predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit ->
+        keysGlobalFlow
+            .filter(predicate)
+            .distinctUntilChanged()
+            .onEach(action)
+            .launchIn(coroutineScope)
+    }
 
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
 
@@ -78,7 +87,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
     val nearestPoint by remember {
         derivedStateOf {
-            cursorOffset?.let {
+            cursorOffset?.let { // Suggestion: refactor `let`s
                 magneticPoint?.let { magneticPoint ->
                     (points - magneticPoint).nearestPointTo(it)
                 } ?: run {
@@ -118,7 +127,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         } catch (e: IllegalStateException) {
             e.printStackTrace()
         } catch (e: IllegalArgumentException) {
-            println(e.message)
+            println(e.message) // TODO dialog
         }
     }
 
@@ -150,23 +159,20 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     LaunchedEffect(Unit) {
-        keysGlobalFlow
-            .filter(copyShortcutPredicate::test)
-            .distinctUntilChanged()
-            .onEach { copyAction.invoke() }
-            .launchIn(coroutineScope)
+        observeKeys.invoke(copyShortcutPredicate::test) { copyAction.invoke() }
+        observeKeys.invoke(pasteShortcutPredicate::test) { pasteAction.invoke() }
 
-        keysGlobalFlow
-            .filter(pasteShortcutPredicate::test)
-            .distinctUntilChanged()
-            .onEach { pasteAction.invoke() }
-            .launchIn(coroutineScope)
+        observeKeys.invoke({ it.key == Key.Spacebar }) { connectAction.invoke() }
 
-        keysGlobalFlow
-            .filter { it.key == Key.Spacebar }
-            .distinctUntilChanged()
-            .onEach { connectAction.invoke() }
-            .launchIn(coroutineScope)
+        observeKeys.invoke({ it.key == Key.A }) { points = points.map { it.copy(x = it.x - 4) } }
+        observeKeys.invoke({ it.key == Key.D }) { points = points.map { it.copy(x = it.x + 4) } }
+        observeKeys.invoke({ it.key == Key.W }) { points = points.map { it.copy(y = it.y - 4) } }
+        observeKeys.invoke({ it.key == Key.S }) { points = points.map { it.copy(y = it.y + 4) } }
+
+        observeKeys.invoke({ it.key == Key.Z }) { points = points.map { it.copy(x = it.x * 0.99F) } }
+        observeKeys.invoke({ it.key == Key.X }) { points = points.map { it.copy(x = it.x / 0.99F) } }
+        observeKeys.invoke({ it.key == Key.C }) { points = points.map { it.copy(y = it.y * 0.99F) } }
+        observeKeys.invoke({ it.key == Key.V }) { points = points.map { it.copy(y = it.y / 0.99F) } }
     }
 
     MenuBar {
@@ -185,7 +191,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     MaterialTheme {
         Canvas(Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
             .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
             .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
             .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
@@ -220,11 +226,15 @@ private fun List<Offset>.nearestPointTo(destination: Offset) = minByOrNull { poi
 
 fun main() = application {
     val coroutineScope = rememberCoroutineScope()
+    // Suggestion: replace `keysFlow` with observers which will come from children composables
+    // and will have type (KeyEvent) -> Boolean, which will allow usage of Boolean response in KeyEvent handling
     val keysFlow = remember { MutableSharedFlow<KeyEvent>() }
 
     Window(
         onCloseRequest = ::exitApplication,
-        onKeyEvent = keysFlow.emitter(coroutineScope).returning(false)
+        onKeyEvent = keysFlow.emitter(coroutineScope).returning(false),
+        undecorated = IS_TRANSPARENT_BUILD,
+        transparent = IS_TRANSPARENT_BUILD
     ) {
         App(keysFlow)
     }
