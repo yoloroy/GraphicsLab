@@ -69,6 +69,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val coroutineScope = rememberCoroutineScope()
     val observeKeys = { predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit ->
         keysGlobalFlow
+            .filter { it.type == KeyEventType.KeyDown }
             .filter(predicate)
             .distinctUntilChanged()
             .onEach(action)
