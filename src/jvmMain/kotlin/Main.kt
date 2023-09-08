@@ -86,7 +86,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var magnetizing by remember { mutableStateOf(true) }
     var magneticPointIndex by remember { mutableStateOf<Int?>(null) }
     val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
-    val nearestPoint by remember {
+    val nearestNotMagneticPoint by remember {
         derivedStateOf {
             cursorOffset?.let { // Suggestion: refactor `let`s
                 magneticPoint?.let { magneticPoint ->
@@ -97,7 +97,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         }
     }
-    val nearestPointIndex by remember { derivedStateOf { nearestPoint?.let { points.indexOf(nearestPoint) } } }
+    val nearestNotMagneticPointIndex by remember { derivedStateOf { nearestNotMagneticPoint?.let { points.indexOf(nearestNotMagneticPoint) } } }
 
     if (!magnetizing) {
         magneticPointIndex = null
@@ -134,11 +134,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     val connectAction = connectAction@ {
         if (!magnetizing) return@connectAction
-        nearestPointIndex?.let { connections += magneticPointIndex!! to it }
+        nearestNotMagneticPointIndex?.let { connections += magneticPointIndex!! to it }
     }
 
     val toggleMagnetizingAction = {
-        nearestPointIndex.takeUnless { magnetizing }?.let { i ->
+        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
             magnetizing = true
             magneticPointIndex = i
         } ?: run {
@@ -210,7 +210,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 magneticPoint?.let { magneticPoint ->
                     drawLine(Color.Black, cursorOffset, magneticPoint)
                 }
-                nearestPoint?.let { nearestPoint ->
+                nearestNotMagneticPoint?.let { nearestPoint ->
                     drawLine(
                         Color.Black,
                         cursorOffset,
