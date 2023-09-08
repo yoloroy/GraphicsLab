@@ -26,6 +26,7 @@ kotlin {
             languageSettings.optIn("androidx.compose.ui.ExperimentalComposeUiApi")
             languageSettings.optIn("androidx.compose.foundation.ExperimentalFoundationApi")
             languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
+            languageSettings.optIn("kotlin.time.ExperimentalTime")
         }
 
         val jvmMain by getting {

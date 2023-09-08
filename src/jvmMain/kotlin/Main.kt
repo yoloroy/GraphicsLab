@@ -3,10 +3,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.PointerMatcher
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.onClick
 import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -21,12 +22,15 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import common.OS
-import common.currentOs
+import components.Failure
+import components.FailuresLog
+import util.OS
+import util.currentOs
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -79,6 +83,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
 
+    var failures by remember { mutableStateOf(listOf<Failure>()) }
+
     var points by remember { mutableStateOf(listOf<Offset>()) }
     var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
 
@@ -105,11 +111,15 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val copyAction = {
-        val encoded = Json.encodeToString(SaveState(
-            points.map { XY.fromOffset(it) },
-            connections.flatMap { listOf(it.first, it.second) }
-        ))
-        clipboardManager.setText(AnnotatedString(encoded))
+        try {
+            val encoded = Json.encodeToString(SaveState(
+                points.map { XY.fromOffset(it) },
+                connections.flatMap { listOf(it.first, it.second) }
+            ))
+            clipboardManager.setText(AnnotatedString(encoded))
+        } catch (e: Exception) {
+            failures += Failure.UncaughtException(e.message ?: "Uncaught exception")
+        }
     }
 
     val pasteAction = {
@@ -117,7 +127,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             val loadedState = Json.decodeFromString<SaveState>(clipboardManager.getText()?.text ?: SaveState.EMPTY_JSON)
 
             if (loadedState.connections.any { it !in loadedState.points.indices }) {
-                throw IllegalArgumentException("Bad indices in connections of pasted Json")
+                throw IllegalStateException("Bad indices in connections of pasted Json")
             }
 
             points = loadedState.points.map { it.toOffset() }
@@ -125,22 +135,31 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             magnetizing = false
             magneticPointIndex = null
         } catch (e: SerializationException) {
-            e.printStackTrace()
-        } catch (e: IllegalStateException) {
-            e.printStackTrace()
+            failures += Failure.Mistake("You did not pasted save")
         } catch (e: IllegalArgumentException) {
-            println(e.message) // TODO dialog
+            failures += Failure.Mistake("Pasted save is not valid: ${e.message}")
         }
     }
 
     val connectAction = connectAction@ {
-        if (!magnetizing) return@connectAction
+        if (!magnetizing) {
+            failures += Failure.Mistake("You are not magnetizing to any point to make a connection")
+            return@connectAction
+        }
         nearestNotMagneticPointIndex?.let { connections += magneticPointIndex!! to it }
     }
 
     val removeAction = removeAction@ {
+        if (magnetizing) {
+            failures += Failure.Mistake("Toggle magnetizing off for enabling remove action")
+            return@removeAction
+        }
+
         cursorOffset?.let { cursorOffset ->
-            val pointToRemove = points.nearestPointTo(cursorOffset) ?: return@removeAction
+            val pointToRemove = points.nearestPointTo(cursorOffset) ?: run {
+                failures += Failure.Mistake("There no points to remove")
+                return@removeAction
+            }
             val index = points.indexOf(pointToRemove)
             points -= pointToRemove
             connections = connections
@@ -183,10 +202,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke({ it.key == Key.W }) { points = points.map { it.copy(y = it.y - 4) } }
         observeKeys.invoke({ it.key == Key.S }) { points = points.map { it.copy(y = it.y + 4) } }
 
-        observeKeys.invoke({ it.key == Key.Z }) { points = points.map { it.copy(x = it.x * 0.99F) } }
-        observeKeys.invoke({ it.key == Key.X }) { points = points.map { it.copy(x = it.x / 0.99F) } }
-        observeKeys.invoke({ it.key == Key.C }) { points = points.map { it.copy(y = it.y * 0.99F) } }
-        observeKeys.invoke({ it.key == Key.V }) { points = points.map { it.copy(y = it.y / 0.99F) } }
+        observeKeys.invoke({ it.key == Key.R }) { points = points.map { it.copy(x = it.x * 0.99F) } }
+        observeKeys.invoke({ it.key == Key.T }) { points = points.map { it.copy(x = it.x / 0.99F) } }
+        observeKeys.invoke({ it.key == Key.F }) { points = points.map { it.copy(y = it.y * 0.99F) } }
+        observeKeys.invoke({ it.key == Key.G }) { points = points.map { it.copy(y = it.y / 0.99F) } }
     }
 
     MenuBar {
@@ -203,35 +222,39 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     MaterialTheme {
-        Canvas(Modifier
-            .fillMaxSize()
-            .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-            .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
-            .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
-            .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
-            .onGloballyPositioned(consumeCanvasSizeUpdate)
-        ) {
-            for ((ai, bi) in connections) {
-                drawLine(Color.Black, points[ai], points[bi])
+        Box(Modifier.fillMaxSize()) {
+            Canvas(Modifier
+                .fillMaxSize()
+                .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
+                .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
+                .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
+                .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
+                .onGloballyPositioned(consumeCanvasSizeUpdate)
+            ) {
+                for ((ai, bi) in connections) {
+                    drawLine(Color.Black, points[ai], points[bi])
+                }
+
+                for (point in points) {
+                    drawCircle(Color.Black, 4F, point)
+                }
+
+                cursorOffset?.let { cursorOffset ->
+                    magneticPoint?.let { magneticPoint ->
+                        drawLine(Color.Black, cursorOffset, magneticPoint)
+                    }
+                    nearestNotMagneticPoint?.let { nearestPoint ->
+                        drawLine(
+                            Color.Black,
+                            cursorOffset,
+                            nearestPoint,
+                            pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
+                        )
+                    }
+                }
             }
 
-            for (point in points) {
-                drawCircle(Color.Black, 4F, point)
-            }
-
-            cursorOffset?.let { cursorOffset ->
-                magneticPoint?.let { magneticPoint ->
-                    drawLine(Color.Black, cursorOffset, magneticPoint)
-                }
-                nearestNotMagneticPoint?.let { nearestPoint ->
-                    drawLine(
-                        Color.Black,
-                        cursorOffset,
-                        nearestPoint,
-                        pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
-                    )
-                }
-            }
+            FailuresLog(failures, Modifier.align(Alignment.BottomEnd).width(300.dp))
         }
     }
 }
