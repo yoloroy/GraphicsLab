@@ -33,6 +33,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import util.emitter
+import util.mapBoth
 import util.returning
 import java.util.function.Predicate
 
@@ -137,6 +138,17 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         nearestNotMagneticPointIndex?.let { connections += magneticPointIndex!! to it }
     }
 
+    val removeAction = removeAction@ {
+        cursorOffset?.let { cursorOffset ->
+            val pointToRemove = points.nearestPointTo(cursorOffset) ?: return@removeAction
+            val index = points.indexOf(pointToRemove)
+            points -= pointToRemove
+            connections = connections
+                .filterNot { it.first == index || it.second == index }
+                .mapBoth { if (it > index) it - 1 else it }
+        }
+    }
+
     val toggleMagnetizingAction = {
         nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
             magnetizing = true
@@ -164,6 +176,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke(pasteShortcutPredicate::test) { pasteAction.invoke() }
 
         observeKeys.invoke({ it.key == Key.Spacebar }) { connectAction.invoke() }
+        observeKeys.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
 
         observeKeys.invoke({ it.key == Key.A }) { points = points.map { it.copy(x = it.x - 4) } }
         observeKeys.invoke({ it.key == Key.D }) { points = points.map { it.copy(x = it.x + 4) } }
