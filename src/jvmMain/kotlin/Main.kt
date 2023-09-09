@@ -37,8 +37,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import util.*
 import java.util.function.Predicate
-import kotlin.math.cos
-import kotlin.math.sin
 
 
 const val IS_TRANSPARENT_BUILD = false
@@ -85,7 +83,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     var failures by remember { mutableStateOf(listOf<Failure>()) }
 
-    var points by remember { mutableStateOf(listOf<Offset>()) }
+    var points by remember { mutableStateOf(listOf<XY>()) }
     var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
 
     var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
@@ -102,9 +100,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         derivedStateOf {
             cursorOffset?.let { // Suggestion: refactor `let`s
                 magneticPoint?.let { magneticPoint ->
-                    (points - magneticPoint).nearestPointTo(it)
+                    (points - magneticPoint).nearestPointTo(XY.fromOffset(it))
                 } ?: run {
-                    points.nearestPointTo(it)
+                    points.nearestPointTo(XY.fromOffset(it))
                 }
             }
         }
@@ -126,7 +124,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val copyAction = {
         try {
             val encoded = Json.encodeToString(SaveState(
-                points.map { XY.fromOffset(it) },
+                points,
                 connections.flatMap { listOf(it.first, it.second) }
             ))
             clipboardManager.setText(AnnotatedString(encoded))
@@ -143,7 +141,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 throw IllegalStateException("Bad indices in connections of pasted Json")
             }
 
-            points = loadedState.points.map { it.toOffset() }
+            points = loadedState.points
             connections = loadedState.connections.chunked(2) { it[0] to it[1] }
             magnetizing = false
             magneticPointIndex = null
@@ -169,7 +167,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
 
         cursorOffset?.let { cursorOffset ->
-            val pointToRemove = points.nearestPointTo(cursorOffset) ?: run {
+            val pointToRemove = points.nearestPointTo(XY.fromOffset(cursorOffset)) ?: run {
                 failures += Failure.Mistake("There no points to remove")
                 return@removeAction
             }
@@ -195,7 +193,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         magneticPointIndex.takeIf { magnetizing }?.let {
             connections += (it to points.size)
         }
-        points += inWorldOffset
+        points += XY.fromOffset(inWorldOffset)
         magneticPointIndex = points.lastIndex
         magnetizing = true
     }
@@ -266,7 +264,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
             ) {
-                val inWorldPoints = points.map(worldScale::times).map(worldOffset::plus)
+                val inWorldPoints = points
+                    .map { XY((it.x * worldScale.x).toInt(), (it.y * worldScale.y).toInt()) } // XY used here for teacher
+                    .map { it + XY.fromOffset(worldOffset) }
+                    .map(XY::toOffset)
 
                 drawLine(Color.Red, Offset(0F, worldOffset.y), Offset(size.width, worldOffset.y))
                 drawLine(Color.Red, Offset(worldOffset.x, 0F), Offset(worldOffset.x, size.height))
@@ -330,7 +331,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
 private operator fun Offset.times(scale: Offset) = Offset(x * scale.x, y * scale.y)
 
-private fun List<Offset>.nearestPointTo(destination: Offset) = minByOrNull { point -> (destination - point).getDistanceSquared() }
+private fun List<XY>.nearestPointTo(destination: XY) = minByOrNull { point -> point.distanceSquaredTo(destination) }
 
 fun main() = application {
     val coroutineScope = rememberCoroutineScope()
