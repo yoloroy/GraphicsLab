@@ -30,17 +30,16 @@ import androidx.compose.ui.window.application
 import components.Failure
 import components.FailuresLog
 import components.ValueRetrieverDialog
-import util.OS
-import util.currentOs
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import util.emitter
-import util.mapBoth
-import util.returning
+import util.*
 import java.util.function.Predicate
+import kotlin.math.cos
+import kotlin.math.sin
+
 
 const val IS_TRANSPARENT_BUILD = false
 
@@ -91,6 +90,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
     var retrievingWorldOffset by remember { mutableStateOf(false) }
+    var worldScale by remember { mutableStateOf(Offset(1F, 1F)) }
+    var retrievingWorldScale by remember { mutableStateOf(false) }
 
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
@@ -110,7 +111,15 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
     val nearestNotMagneticPointIndex by remember { derivedStateOf { nearestNotMagneticPoint?.let { points.indexOf(nearestNotMagneticPoint) } } }
 
-    if (!magnetizing) {
+    LaunchedEffect(worldScale) {
+        if (worldScale.x > 0F && worldScale.y > 0F) return@LaunchedEffect
+
+        worldScale = Offset(0.01F, 0.01F)
+        failures += Failure.Mistake("World scale should be positive")
+    }
+
+    LaunchedEffect(magnetizing) {
+        if (magnetizing) return@LaunchedEffect
         magneticPointIndex = null
     }
 
@@ -182,7 +191,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val consumePrimaryClick = { clickOffset: Offset ->
-        val inWorldOffset = clickOffset - worldOffset
+        val inWorldOffset = clickOffset * worldScale - worldOffset
         magneticPointIndex.takeIf { magnetizing }?.let {
             connections += (it to points.size)
         }
@@ -195,11 +204,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
     }
 
-    val transformTextToPoint = { text: String ->
+    val transformTextToOffset = { text: String ->
         try {
             text.split(" ")
-                .map { it.toInt() }
-                .let { Offset(it[0].toFloat(), it[1].toFloat()) }
+                .map { it.toFloat() }
+                .let { Offset(it[0], it[1]) }
         } catch (e: NumberFormatException) {
             null
         } catch (e: IndexOutOfBoundsException) {
@@ -222,10 +231,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
         observeKeys.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
 
-        observeKeys.invoke({ it.key == Key.R }) { points = points.map { it.copy(x = it.x * 0.99F) } } // TODO using worldZoom
-        observeKeys.invoke({ it.key == Key.T }) { points = points.map { it.copy(x = it.x / 0.99F) } } // TODO using worldZoom
-        observeKeys.invoke({ it.key == Key.F }) { points = points.map { it.copy(y = it.y * 0.99F) } } // TODO using worldZoom
-        observeKeys.invoke({ it.key == Key.G }) { points = points.map { it.copy(y = it.y / 0.99F) } } // TODO using worldZoom
+        observeKeys.invoke({ it.key == Key.R }) { worldScale = worldScale.copy(x = worldScale.x * 0.99F) }
+        observeKeys.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
+        observeKeys.invoke({ it.key == Key.F }) { worldScale = worldScale.copy(y = worldScale.y * 0.99F) }
+        observeKeys.invoke({ it.key == Key.G }) { worldScale = worldScale.copy(y = worldScale.y / 0.99F) }
     }
 
     MenuBar {
@@ -243,6 +252,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
         Menu(text = "Assign") {
             Item(text = "World offset", onClick = { retrievingWorldOffset = true })
+            Item(text = "World scale", onClick = { retrievingWorldScale = true })
         }
     }
 
@@ -256,26 +266,28 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
             ) {
-                val offsetPoints = points
-                    .map { it.copy(x = it.x + worldOffset.x, y = it.y + worldOffset.y) }
+                val inWorldPoints = points.map(worldScale::times).map(worldOffset::plus)
+
+                drawLine(Color.Red, Offset(0F, worldOffset.y), Offset(size.width, worldOffset.y))
+                drawLine(Color.Red, Offset(worldOffset.x, 0F), Offset(worldOffset.x, size.height))
 
                 for ((ai, bi) in connections) {
-                    drawLine(Color.Black, offsetPoints[ai], offsetPoints[bi])
+                    drawLine(Color.Black, inWorldPoints[ai], inWorldPoints[bi])
                 }
 
-                for (point in offsetPoints) {
+                for (point in inWorldPoints) {
                     drawCircle(Color.Black, 4F, point)
                 }
 
                 cursorOffset?.let { cursorOffset ->
                     magneticPointIndex?.let { i ->
-                        drawLine(Color.Black, cursorOffset, offsetPoints[i])
+                        drawLine(Color.Black, cursorOffset, inWorldPoints[i])
                     }
                     nearestNotMagneticPointIndex?.let { i ->
                         drawLine(
                             Color.Black,
                             cursorOffset,
-                            offsetPoints[i],
+                            inWorldPoints[i],
                             pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
                         )
                     }
@@ -290,7 +302,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             startValue = worldOffset.let { "${it.x.toInt()} ${it.y.toInt()}" },
             visible = retrievingWorldOffset,
             title = "World Offset (two integer numbers separated by space)",
-            transform = transformTextToPoint,
+            transform = transformTextToOffset,
             setValueAndCloseDialog = {
                 worldOffset = it
                 retrievingWorldOffset = false
@@ -299,9 +311,24 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 retrievingWorldOffset = false
             }
         )
+        ValueRetrieverDialog(
+            startValue = worldScale.let { "${it.x.toInt()} ${it.y.toInt()}" },
+            visible = retrievingWorldScale,
+            title = "World Scale (two integer numbers separated by space)",
+            transform = transformTextToOffset,
+            setValueAndCloseDialog = {
+                worldScale = it
+                retrievingWorldScale = false
+            },
+            close = {
+                retrievingWorldScale = false
+            }
+        )
         // endregion
     }
 }
+
+private operator fun Offset.times(scale: Offset) = Offset(x * scale.x, y * scale.y)
 
 private fun List<Offset>.nearestPointTo(destination: Offset) = minByOrNull { point -> (destination - point).getDistanceSquared() }
 
