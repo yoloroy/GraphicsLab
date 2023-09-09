@@ -32,12 +32,12 @@ value class XY(val list: List<Int>) {
 
     operator fun div(other: XY) = XY(x / other.x, y / other.y)
 
-    private infix fun Offset.`🔄`(xyRotation: Float): Offset {
+    infix fun `🔄`(xyRotation: Float): XY {
         val c = sin(xyRotation)
         val s = cos(xyRotation)
         val xNew = x * c - y * s
         val yNew = x * s + y * c
-        return Offset(xNew, yNew)
+        return XY(xNew.toInt(), yNew.toInt())
     }
 
     fun distanceSquaredTo(other: XY) = (this - other).run { x * x + y * y }
