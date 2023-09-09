@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import components.Failure
 import components.FailuresLog
+import components.ValueRetrieverDialog
 import util.OS
 import util.currentOs
 import kotlinx.coroutines.flow.*
@@ -87,6 +88,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     var points by remember { mutableStateOf(listOf<Offset>()) }
     var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
+
+    var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
+    var retrievingWorldOffset by remember { mutableStateOf(false) }
 
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
@@ -178,16 +182,32 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val consumePrimaryClick = { clickOffset: Offset ->
+        val inWorldOffset = clickOffset - worldOffset
         magneticPointIndex.takeIf { magnetizing }?.let {
             connections += (it to points.size)
         }
-        points += clickOffset
+        points += inWorldOffset
         magneticPointIndex = points.lastIndex
         magnetizing = true
     }
 
     val consumeCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
         canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+    }
+
+    val transformTextToPoint = { text: String ->
+        try {
+            text.split(" ")
+                .map { it.toInt() }
+                .let { Offset(it[0].toFloat(), it[1].toFloat()) }
+        } catch (e: NumberFormatException) {
+            null
+        } catch (e: IndexOutOfBoundsException) {
+            null
+        } catch (e: Exception) {
+            failures += Failure.UncaughtException(e.message ?: e::class.toString())
+            worldOffset
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -197,18 +217,19 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke({ it.key == Key.Spacebar }) { connectAction.invoke() }
         observeKeys.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
 
-        observeKeys.invoke({ it.key == Key.A }) { points = points.map { it.copy(x = it.x - 4) } }
-        observeKeys.invoke({ it.key == Key.D }) { points = points.map { it.copy(x = it.x + 4) } }
-        observeKeys.invoke({ it.key == Key.W }) { points = points.map { it.copy(y = it.y - 4) } }
-        observeKeys.invoke({ it.key == Key.S }) { points = points.map { it.copy(y = it.y + 4) } }
+        observeKeys.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
+        observeKeys.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
+        observeKeys.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
+        observeKeys.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
 
-        observeKeys.invoke({ it.key == Key.R }) { points = points.map { it.copy(x = it.x * 0.99F) } }
-        observeKeys.invoke({ it.key == Key.T }) { points = points.map { it.copy(x = it.x / 0.99F) } }
-        observeKeys.invoke({ it.key == Key.F }) { points = points.map { it.copy(y = it.y * 0.99F) } }
-        observeKeys.invoke({ it.key == Key.G }) { points = points.map { it.copy(y = it.y / 0.99F) } }
+        observeKeys.invoke({ it.key == Key.R }) { points = points.map { it.copy(x = it.x * 0.99F) } } // TODO using worldZoom
+        observeKeys.invoke({ it.key == Key.T }) { points = points.map { it.copy(x = it.x / 0.99F) } } // TODO using worldZoom
+        observeKeys.invoke({ it.key == Key.F }) { points = points.map { it.copy(y = it.y * 0.99F) } } // TODO using worldZoom
+        observeKeys.invoke({ it.key == Key.G }) { points = points.map { it.copy(y = it.y / 0.99F) } } // TODO using worldZoom
     }
 
     MenuBar {
+
         Menu(text = "Actions") {
             Item(text = "Copy", onClick = copyAction)
             Item(text = "Paste", onClick = pasteAction)
@@ -218,6 +239,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 magnetizing = false
                 magneticPointIndex = null
             }
+        }
+
+        Menu(text = "Assign") {
+            Item(text = "World offset", onClick = { retrievingWorldOffset = true })
         }
     }
 
@@ -231,23 +256,26 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
             ) {
+                val offsetPoints = points
+                    .map { it.copy(x = it.x + worldOffset.x, y = it.y + worldOffset.y) }
+
                 for ((ai, bi) in connections) {
-                    drawLine(Color.Black, points[ai], points[bi])
+                    drawLine(Color.Black, offsetPoints[ai], offsetPoints[bi])
                 }
 
-                for (point in points) {
+                for (point in offsetPoints) {
                     drawCircle(Color.Black, 4F, point)
                 }
 
                 cursorOffset?.let { cursorOffset ->
-                    magneticPoint?.let { magneticPoint ->
-                        drawLine(Color.Black, cursorOffset, magneticPoint)
+                    magneticPointIndex?.let { i ->
+                        drawLine(Color.Black, cursorOffset, offsetPoints[i])
                     }
-                    nearestNotMagneticPoint?.let { nearestPoint ->
+                    nearestNotMagneticPointIndex?.let { i ->
                         drawLine(
                             Color.Black,
                             cursorOffset,
-                            nearestPoint,
+                            offsetPoints[i],
                             pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
                         )
                     }
@@ -256,6 +284,22 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
             FailuresLog(failures, Modifier.align(Alignment.BottomEnd).width(300.dp))
         }
+
+        // region dialogs
+        ValueRetrieverDialog(
+            startValue = worldOffset.let { "${it.x.toInt()} ${it.y.toInt()}" },
+            visible = retrievingWorldOffset,
+            title = "World Offset (two integer numbers separated by space)",
+            transform = transformTextToPoint,
+            setValueAndCloseDialog = {
+                worldOffset = it
+                retrievingWorldOffset = false
+            },
+            close = {
+                retrievingWorldOffset = false
+            }
+        )
+        // endregion
     }
 }
 
