@@ -38,7 +38,6 @@ import kotlinx.serialization.json.Json
 import util.*
 import java.util.function.Predicate
 
-
 const val IS_TRANSPARENT_BUILD = false
 
 val copyShortcutPredicate: Predicate<KeyEvent> = run {
@@ -91,6 +90,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var worldScale by remember { mutableStateOf(Offset(1F, 1F)) }
     var retrievingWorldScale by remember { mutableStateOf(false) }
 
+    fun Offset.toWorldXY() = XY.fromOffset(this / worldScale + worldOffset)
+
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
     var magnetizing by remember { mutableStateOf(true) }
@@ -98,11 +99,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
     val nearestNotMagneticPoint by remember {
         derivedStateOf {
-            cursorOffset?.let { // Suggestion: refactor `let`s
+            cursorOffset?.toWorldXY()?.let {
                 magneticPoint?.let { magneticPoint ->
-                    (points - magneticPoint).nearestPointTo(XY.fromOffset(it))
+                    (points - magneticPoint).nearestPointTo(it)
                 } ?: run {
-                    points.nearestPointTo(XY.fromOffset(it))
+                    points.nearestPointTo(it)
                 }
             }
         }
@@ -167,7 +168,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
 
         cursorOffset?.let { cursorOffset ->
-            val pointToRemove = points.nearestPointTo(XY.fromOffset(cursorOffset)) ?: run {
+            val pointToRemove = points.nearestPointTo(cursorOffset.toWorldXY()) ?: run {
                 failures += Failure.Mistake("There no points to remove")
                 return@removeAction
             }
@@ -189,11 +190,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val consumePrimaryClick = { clickOffset: Offset ->
-        val inWorldOffset = clickOffset * worldScale - worldOffset
         magneticPointIndex.takeIf { magnetizing }?.let {
             connections += (it to points.size)
         }
-        points += XY.fromOffset(inWorldOffset)
+        points += clickOffset.toWorldXY()
         magneticPointIndex = points.lastIndex
         magnetizing = true
     }
@@ -264,31 +264,28 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
             ) {
-                val inWorldPoints = points
-                    .map { XY((it.x * worldScale.x).toInt(), (it.y * worldScale.y).toInt()) } // XY used here for teacher
-                    .map { it + XY.fromOffset(worldOffset) }
-                    .map(XY::toOffset)
+                val canvasPoints = points.map { it.toOffset() * worldScale + worldOffset } // TODO use translate and scale functions when it will be allowed
 
                 drawLine(Color.Red, Offset(0F, worldOffset.y), Offset(size.width, worldOffset.y))
                 drawLine(Color.Red, Offset(worldOffset.x, 0F), Offset(worldOffset.x, size.height))
 
                 for ((ai, bi) in connections) {
-                    drawLine(Color.Black, inWorldPoints[ai], inWorldPoints[bi])
+                    drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
                 }
 
-                for (point in inWorldPoints) {
+                for (point in canvasPoints) {
                     drawCircle(Color.Black, 4F, point)
                 }
 
                 cursorOffset?.let { cursorOffset ->
                     magneticPointIndex?.let { i ->
-                        drawLine(Color.Black, cursorOffset, inWorldPoints[i])
+                        drawLine(Color.Black, cursorOffset, canvasPoints[i])
                     }
                     nearestNotMagneticPointIndex?.let { i ->
                         drawLine(
                             Color.Black,
                             cursorOffset,
-                            inWorldPoints[i],
+                            canvasPoints[i],
                             pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
                         )
                     }
@@ -329,7 +326,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 }
 
-private operator fun Offset.times(scale: Offset) = Offset(x * scale.x, y * scale.y)
+private operator fun Offset.times(other: Offset) = Offset(x * other.x, y * other.y)
+
+private operator fun Offset.div(other: Offset) = Offset(x / other.x, y / other.y)
 
 private fun List<XY>.nearestPointTo(destination: XY) = minByOrNull { point -> point.distanceSquaredTo(destination) }
 
