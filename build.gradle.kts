@@ -25,6 +25,7 @@ kotlin {
         all {
             languageSettings.optIn("androidx.compose.ui.ExperimentalComposeUiApi")
             languageSettings.optIn("androidx.compose.foundation.ExperimentalFoundationApi")
+            languageSettings.optIn("androidx.compose.animation.ExperimentalAnimationApi")
             languageSettings.optIn("kotlinx.coroutines.ExperimentalCoroutinesApi")
             languageSettings.optIn("kotlin.time.ExperimentalTime")
         }
