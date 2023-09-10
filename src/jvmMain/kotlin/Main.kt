@@ -6,6 +6,8 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.onClick
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,10 +22,7 @@ import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.FrameWindowScope
-import androidx.compose.ui.window.MenuBar
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.application
+import androidx.compose.ui.window.*
 import components.Failure
 import components.FailuresLog
 import components.ValueRetrieverDialog
@@ -37,6 +36,7 @@ import java.lang.Math.toDegrees
 import java.lang.Math.toRadians
 import java.util.function.Predicate
 import kotlin.math.PI
+import kotlin.math.pow
 
 const val IS_TRANSPARENT_BUILD = false
 
@@ -64,6 +64,8 @@ data class SaveState(
     }
 }
 
+enum class ScrollMode { Movement, Zoom, RotationXY }
+
 context(FrameWindowScope)
 @Composable
 @Preview
@@ -79,8 +81,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
-
     var failures by remember { mutableStateOf(listOf<Failure>()) }
+    var scrollMode by remember { mutableStateOf(ScrollMode.Movement) }
+    var isInfoOpen by remember { mutableStateOf(false) }
 
     var points by remember { mutableStateOf(listOf<XY>()) }
     var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
@@ -92,7 +95,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var worldXYRotation by remember { mutableStateOf(PI.toFloat()) }
     var retrievingWorldXYRotation by remember { mutableStateOf(false) }
 
-    fun Offset.toWorldXY() = XY.fromOffset((this / worldScale).rotated(-worldXYRotation) + worldOffset)
+    fun Offset.toWorldXY() = XY.fromOffset(((this - worldOffset) / worldScale).rotated(-worldXYRotation))
 
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
@@ -204,6 +207,14 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
     }
 
+    val consumeScroll = { change: PointerInputChange ->
+        when (scrollMode) {
+            ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
+            ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
+            ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
+        }
+    }
+
     val transformTextToOffset = { text: String ->
         try {
             text.split(" ")
@@ -235,6 +246,17 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
         observeKeys.invoke({ it.key == Key.F }) { worldScale = worldScale.copy(y = worldScale.y * 0.99F) }
         observeKeys.invoke({ it.key == Key.G }) { worldScale = worldScale.copy(y = worldScale.y / 0.99F) }
+
+        observeKeys.invoke({ it.key == Key.Q }) { worldXYRotation -= toRadians(5.0).toFloat() }
+        observeKeys.invoke({ it.key == Key.E }) { worldXYRotation += toRadians(5.0).toFloat() }
+
+        observeKeys.invoke({ it.key == Key.Y }) { scrollMode = ScrollMode.Movement }
+        observeKeys.invoke({ it.key == Key.U }) { scrollMode = ScrollMode.Zoom }
+        observeKeys.invoke({ it.key == Key.H }) { scrollMode = ScrollMode.RotationXY }
+        observeKeys.invoke({ it.key == Key.J }) { /*TODO rotation YZ*/ }
+        observeKeys.invoke({ it.key == Key.K }) { /*TODO rotation ZX*/ }
+
+        observeKeys.invoke({ it.key == Key.I }) { isInfoOpen = !isInfoOpen }
     }
 
     MenuBar {
@@ -255,6 +277,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             Item(text = "World scale", onClick = { retrievingWorldScale = true })
             Item(text = "World XY rotation", onClick = { retrievingWorldXYRotation = true })
         }
+
+        Menu(text = "Help") {
+            Item(text = "Info", onClick = { isInfoOpen = true })
+        }
     }
 
     MaterialTheme {
@@ -263,6 +289,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .fillMaxSize()
                 .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
                 .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
+                .onPointerEvent(PointerEventType.Scroll) { consumeScroll(it.changes.first()) }
                 .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
@@ -305,6 +332,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
 
         // region dialogs
+        Info(isInfoOpen) { isInfoOpen = false }
         ValueRetrieverDialog(
             startValue = worldOffset.let { "${it.x.toInt()} ${it.y.toInt()}" },
             visible = retrievingWorldOffset,
@@ -345,6 +373,41 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         )
         // endregion
+    }
+}
+
+@Composable
+private fun Info(visible: Boolean, close: () -> Unit) {
+    if (!visible) return
+
+    Dialog(
+        visible = visible,
+        title = "Info",
+        onCloseRequest = close
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Text("""
+                Ctrl/⌘ + C – Copy figure
+                Ctrl/⌘ + V – Paste figure
+                ⌫ – Remove nearest point
+                ⎵ – Connect magnetized point and other nearest point
+                W, A, S, D – move up, left, down, right accordingly
+                Q, E – rotate left, rotate right
+                R, T – scale width up and down
+                F, G – scale height up and down
+                Y – change scroll mode to movement
+                U – change scroll mode to zooming
+                H – change scroll mode to xy rotation
+            """.trimIndent())
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = close) {
+                Text("OK")
+            }
+        }
     }
 }
 
