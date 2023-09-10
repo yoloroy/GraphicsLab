@@ -3,15 +3,17 @@ package components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.scaleIn
+import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.singleWindowApplication
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
@@ -25,6 +27,15 @@ val HIDING_DURATION = HIDDEN_START - SLOPE_START
 sealed class Failure(val message: String, val color: Color) {
     class UncaughtException(message: String) : Failure(message, Color.Red)
     class Mistake(message: String) : Failure(message, Color.Black)
+
+    override fun hashCode() = message.hashCode() + color.hashCode()
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other as? Failure == null) return false
+        if (message != other.message) return false
+        return color == other.color
+    }
 }
 
 @Composable
@@ -33,36 +44,30 @@ fun FailuresLog(failures: List<Failure>, modifier: Modifier = Modifier) {
 
     var timedFailures by remember { mutableStateOf(listOf<TimedValue<Failure>>()) }
     timedFailures += failures
-        .filter { timedFailures.none { (failure, _) -> failure === it } }
+        .takeLastWhile { timedFailures.none { (failure, _) -> failure === it } }
+        .distinctBy { it.message }
         .map { TimedValue(it, System.currentTimeMillis().milliseconds) }
 
     var hiddenFailures by remember { mutableStateOf(setOf<TimedValue<Failure>>()) }
-    val shownFailures = timedFailures
-        .minus(hiddenFailures)
-        .filter { (System.currentTimeMillis().milliseconds - it.duration) < HIDDEN_START }
-        .distinctBy { it.value.message }
+    val shownFailures = (timedFailures - hiddenFailures)
+        .distinctBy { it.value.message.hashCode() + it.duration.inWholeSeconds / SLOPE_START.inWholeSeconds }
 
-    LazyColumn(
+    Column(
         modifier = modifier,
         verticalArrangement = Arrangement.Bottom
     ) {
-        items(shownFailures) { timedFailure ->
+        for (timedFailure in shownFailures) {
             val failure = timedFailure.value
-
             var visible by remember { mutableStateOf(true) }
 
             AnimatedVisibility(
                 visible = visible,
-                exit = fadeOut(
-                    tween(
-                        durationMillis = HIDING_DURATION.inWholeMilliseconds.toInt()
-                    )
-                )
+                exit = fadeOut(tween(durationMillis = HIDING_DURATION.inWholeMilliseconds.toInt()))
             ) {
                 Text(
                     text = failure.message,
                     color = failure.color,
-                    modifier = Modifier.fillParentMaxWidth().padding(8.dp)
+                    modifier = Modifier.width(IntrinsicSize.Max).padding(8.dp)
                 )
             }
 
@@ -70,7 +75,7 @@ fun FailuresLog(failures: List<Failure>, modifier: Modifier = Modifier) {
                 coroutineScope.launch {
                     delay(SLOPE_START)
                     visible = false
-                    delay(HIDDEN_START)
+                    delay(HIDING_DURATION)
                     hiddenFailures += timedFailure
                 }
             }
