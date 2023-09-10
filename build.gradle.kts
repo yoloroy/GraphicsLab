@@ -36,8 +36,16 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
             }
         }
-        val jvmTest by getting
+        val jvmTest by getting {
+            dependencies {
+                implementation("org.junit.jupiter:junit-jupiter:5.8.1")
+            }
+        }
     }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
 
 tasks.withType<KotlinCompile>().configureEach {

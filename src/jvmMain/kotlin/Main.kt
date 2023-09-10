@@ -2,7 +2,7 @@ import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.PointerMatcher
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.onClick
 import androidx.compose.material.MaterialTheme
@@ -13,10 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.PointerButton
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ClipboardManager
@@ -36,7 +33,10 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import util.*
+import java.lang.Math.toDegrees
+import java.lang.Math.toRadians
 import java.util.function.Predicate
+import kotlin.math.PI
 
 const val IS_TRANSPARENT_BUILD = false
 
@@ -89,8 +89,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var retrievingWorldOffset by remember { mutableStateOf(false) }
     var worldScale by remember { mutableStateOf(Offset(1F, 1F)) }
     var retrievingWorldScale by remember { mutableStateOf(false) }
+    var worldXYRotation by remember { mutableStateOf(PI.toFloat()) }
+    var retrievingWorldXYRotation by remember { mutableStateOf(false) }
 
-    fun Offset.toWorldXY() = XY.fromOffset(this / worldScale + worldOffset)
+    fun Offset.toWorldXY() = XY.fromOffset((this / worldScale).rotated(-worldXYRotation) + worldOffset)
 
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
@@ -251,6 +253,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         Menu(text = "Assign") {
             Item(text = "World offset", onClick = { retrievingWorldOffset = true })
             Item(text = "World scale", onClick = { retrievingWorldScale = true })
+            Item(text = "World XY rotation", onClick = { retrievingWorldXYRotation = true })
         }
     }
 
@@ -264,7 +267,13 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
                 .onGloballyPositioned(consumeCanvasSizeUpdate)
             ) {
-                val canvasPoints = points.map { it.toOffset() * worldScale + worldOffset } // TODO use translate and scale functions when it will be allowed
+                // TODO use translate and scale functions when it will be allowed
+                val canvasPoints = points.map { it
+                    .run { XY((x * worldScale.x).toInt(), (y * worldScale.y).toInt()) }
+                    .rotatedXY(worldXYRotation)
+                    .plus(XY.fromOffset(worldOffset))
+                    .toOffset()
+                }
 
                 drawLine(Color.Red, Offset(0F, worldOffset.y), Offset(size.width, worldOffset.y))
                 drawLine(Color.Red, Offset(worldOffset.x, 0F), Offset(worldOffset.x, size.height))
@@ -322,6 +331,19 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 retrievingWorldScale = false
             }
         )
+        ValueRetrieverDialog(
+            startValue = toDegrees(worldXYRotation.toDouble()).toString(),
+            visible = retrievingWorldXYRotation,
+            title = "World Rotation in XY (in degrees)",
+            transform = { it.toDoubleOrNull() },
+            setValueAndCloseDialog = {
+                worldXYRotation = toRadians(it).toFloat()
+                retrievingWorldXYRotation = false
+            },
+            close = {
+                retrievingWorldXYRotation = false
+            }
+        )
         // endregion
     }
 }
@@ -329,6 +351,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 private operator fun Offset.times(other: Offset) = Offset(x * other.x, y * other.y)
 
 private operator fun Offset.div(other: Offset) = Offset(x / other.x, y / other.y)
+
+private fun Offset.rotated(radians: Float) = (listOf(listOf(x, y)) * xyRotationMatrix(radians)).let { Offset(it[0][0], it[0][1]) }
 
 private fun List<XY>.nearestPointTo(destination: XY) = minByOrNull { point -> point.distanceSquaredTo(destination) }
 

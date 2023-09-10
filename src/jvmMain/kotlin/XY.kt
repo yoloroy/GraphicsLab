@@ -1,7 +1,7 @@
 import androidx.compose.ui.geometry.Offset
 import kotlinx.serialization.Serializable
-import kotlin.math.cos
-import kotlin.math.sin
+import util.times
+import util.xyRotationMatrix
 
 @Serializable
 @JvmInline
@@ -22,23 +22,19 @@ value class XY(val list: List<Int>) {
 
     fun toOffset() = Offset(x.toFloat(), y.toFloat())
 
+    fun toMatrix() = listOf(list.map { it.toFloat() })
+
+    fun toOtherMatrix() = list.map { listOf(it.toFloat()) }
+
     operator fun unaryMinus() = XY(-x, -y)
 
     operator fun plus(other: XY) = XY(x + other.x, y + other.y)
 
     operator fun minus(other: XY) = this + (-other)
 
-    operator fun times(other: XY) = XY(x * other.x, y * other.y)
+    operator fun times(other: XY) = toMatrix() * other.toOtherMatrix()
 
-    operator fun div(other: XY) = XY(x / other.x, y / other.y)
-
-    infix fun `🔄`(xyRotation: Float): XY {
-        val c = sin(xyRotation)
-        val s = cos(xyRotation)
-        val xNew = x * c - y * s
-        val yNew = x * s + y * c
-        return XY(xNew.toInt(), yNew.toInt())
-    }
+    fun rotatedXY(radians: Float) = XY((toMatrix() * xyRotationMatrix(radians))[0].map { it.toInt() })
 
     fun distanceSquaredTo(other: XY) = (this - other).run { x * x + y * y }
 }
