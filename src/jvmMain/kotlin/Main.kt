@@ -215,6 +215,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
+    val consumeMove = { change: PointerInputChange -> cursorOffset = change.position }
+
     val transformTextToOffset = { text: String ->
         try {
             text.split(" ")
@@ -288,11 +290,13 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             Canvas(Modifier
                 .fillMaxSize()
                 .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-                .onPointerEvent(PointerEventType.Move) { cursorOffset = it.changes.first().position }
-                .onPointerEvent(PointerEventType.Scroll) { consumeScroll(it.changes.first()) }
-                .pointerInput(Unit) { detectTapGestures(onTap = consumePrimaryClick) }
-                .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = toggleMagnetizingAction)
-                .onGloballyPositioned(consumeCanvasSizeUpdate)
+                .onCanvasActions(
+                    onMove = consumeMove,
+                    onScroll = consumeScroll,
+                    onPrimaryClick = consumePrimaryClick,
+                    onToggleMagnetizingAction = toggleMagnetizingAction,
+                    onCanvasSizeUpdate = consumeCanvasSizeUpdate
+                )
             ) {
                 // TODO use translate and scale functions when it will be allowed
                 val canvasPoints = points.map { it
@@ -375,6 +379,19 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         // endregion
     }
 }
+
+private fun Modifier.onCanvasActions(
+    onMove: (PointerInputChange) -> Unit,
+    onScroll: (PointerInputChange) -> Unit,
+    onPrimaryClick: (Offset) -> Unit,
+    onToggleMagnetizingAction: () -> Unit,
+    onCanvasSizeUpdate: (LayoutCoordinates) -> Unit
+) = this
+    .onPointerEvent(PointerEventType.Move) { onMove(it.changes.first()) }
+    .onPointerEvent(PointerEventType.Scroll) { onScroll(it.changes.first()) }
+    .pointerInput(Unit) { detectTapGestures(onTap = onPrimaryClick) }
+    .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = onToggleMagnetizingAction)
+    .onGloballyPositioned(onCanvasSizeUpdate)
 
 @Composable
 private fun Info(visible: Boolean, close: () -> Unit) {
