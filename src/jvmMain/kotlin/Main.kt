@@ -1,10 +1,7 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.PointerMatcher
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.onClick
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -17,15 +14,12 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
-import components.Failure
-import components.FailuresLog
-import components.ValueRetrieverDialog
+import components.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -37,6 +31,7 @@ import java.lang.Math.toRadians
 import java.util.function.Predicate
 import kotlin.math.PI
 import kotlin.math.pow
+import kotlin.reflect.KProperty
 
 const val IS_TRANSPARENT_BUILD = false
 
@@ -86,7 +81,31 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var isInfoOpen by remember { mutableStateOf(false) }
 
     var points by remember { mutableStateOf(listOf<XY>()) }
-    var connections by remember { mutableStateOf(listOf<Pair<Int, Int>>()) }
+    var adjacencyMatrix by remember { mutableStateOf(mutableListOf<MutableList<Boolean>>(), neverEqualPolicy()) }
+    val connections by { adjacencyMatrix
+        .asSequence()
+        .flatMapIndexed { ai, connections -> connections
+            .asSequence()
+            .withIndex()
+            .filter { it.value }
+            .map { (bi, _) -> ai to bi }
+        }
+    }
+
+    fun addPoint(xy: XY) {
+        points += xy
+        adjacencyMatrix = adjacencyMatrix.apply {
+            forEach { row -> row += false }
+            this += MutableList(points.size) { false }
+        }
+    }
+
+    fun connect(ai: Int, bi: Int) {
+        adjacencyMatrix = adjacencyMatrix.apply {
+            this[ai][bi] = true
+            this[bi][ai] = true
+        }
+    }
 
     var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
     var retrievingWorldOffset by remember { mutableStateOf(false) }
@@ -131,7 +150,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         try {
             val encoded = Json.encodeToString(SaveState(
                 points,
-                connections.flatMap { listOf(it.first, it.second) }
+                connections.flatMap { listOf(it.first, it.second) }.toList()
             ))
             clipboardManager.setText(AnnotatedString(encoded))
         } catch (e: Exception) {
@@ -148,7 +167,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
 
             points = loadedState.points
-            connections = loadedState.connections.chunked(2) { it[0] to it[1] }
+            adjacencyMatrix = MutableList(points.size) { MutableList(points.size) { false } }.apply {
+                loadedState.connections.chunked(2).forEach { (ai, bi) ->
+                    this[ai][bi] = true
+                    this[bi][ai] = true
+                }
+            }
             magnetizing = false
             magneticPointIndex = null
         } catch (e: SerializationException) {
@@ -158,12 +182,19 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
+    val clearAction = {
+        points = emptyList()
+        adjacencyMatrix = mutableListOf()
+        magnetizing = false
+        magneticPointIndex = null
+    }
+
     val connectAction = connectAction@ {
         if (!magnetizing) {
             failures += Failure.Mistake("You are not magnetizing to any point to make a connection")
             return@connectAction
         }
-        nearestNotMagneticPointIndex?.let { connections += magneticPointIndex!! to it }
+        nearestNotMagneticPointIndex?.let { connect(magneticPointIndex!!, it) }
     }
 
     val removeAction = removeAction@ {
@@ -179,43 +210,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
             val index = points.indexOf(pointToRemove)
             points -= pointToRemove
-            connections = connections
-                .filterNot { it.first == index || it.second == index }
-                .mapBoth { if (it > index) it - 1 else it }
+            adjacencyMatrix = adjacencyMatrix.apply {
+                forEach { row -> row.removeAt(index) }
+                removeAt(index)
+            }
         }
     }
-
-    val toggleMagnetizingAction = {
-        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
-            magnetizing = true
-            magneticPointIndex = i
-        } ?: run {
-            magnetizing = false
-        }
-    }
-
-    val consumePrimaryClick = { clickOffset: Offset ->
-        magneticPointIndex.takeIf { magnetizing }?.let {
-            connections += (it to points.size)
-        }
-        points += clickOffset.toWorldXY()
-        magneticPointIndex = points.lastIndex
-        magnetizing = true
-    }
-
-    val consumeCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
-        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-    }
-
-    val consumeScroll = { change: PointerInputChange ->
-        when (scrollMode) {
-            ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
-            ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
-            ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
-        }
-    }
-
-    val consumeMove = { change: PointerInputChange -> cursorOffset = change.position }
 
     val transformTextToOffset = { text: String ->
         try {
@@ -266,12 +266,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         Menu(text = "Actions") {
             Item(text = "Copy", onClick = copyAction)
             Item(text = "Paste", onClick = pasteAction)
-            Item(text = "Clear") {
-                points = emptyList()
-                connections = emptyList()
-                magnetizing = false
-                magneticPointIndex = null
-            }
+            Item(text = "Clear", onClick = clearAction)
         }
 
         Menu(text = "Assign") {
@@ -290,13 +285,40 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             Canvas(Modifier
                 .fillMaxSize()
                 .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-                .onCanvasActions(
-                    onMove = consumeMove,
-                    onScroll = consumeScroll,
-                    onPrimaryClick = consumePrimaryClick,
-                    onToggleMagnetizingAction = toggleMagnetizingAction,
-                    onCanvasSizeUpdate = consumeCanvasSizeUpdate
-                )
+                .onCursorActions(object : CursorActionsHandler {
+
+                    override fun onMove(change: PointerInputChange) {
+                        cursorOffset = change.position
+                    }
+
+                    override fun onScroll(change: PointerInputChange) = when (scrollMode) {
+                        ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
+                        ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
+                        ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
+                    }
+
+                    override fun onPrimaryClick(pointerOffset: Offset) {
+                        addPoint(pointerOffset.toWorldXY())
+                        magneticPointIndex.takeIf { magnetizing }?.let {
+                            connect(it, points.lastIndex)
+                        }
+                        magneticPointIndex = points.lastIndex
+                        magnetizing = true
+                    }
+
+                    override fun onToggleMagnetizingAction() {
+                        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
+                            magnetizing = true
+                            magneticPointIndex = i
+                        } ?: run {
+                            magnetizing = false
+                        }
+                    }
+
+                    override fun onCanvasSizeUpdate(coordinates: LayoutCoordinates) {
+                        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                    }
+                })
             ) {
                 // TODO use translate and scale functions when it will be allowed
                 val canvasPoints = points.map { it
@@ -380,18 +402,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 }
 
-private fun Modifier.onCanvasActions(
-    onMove: (PointerInputChange) -> Unit,
-    onScroll: (PointerInputChange) -> Unit,
-    onPrimaryClick: (Offset) -> Unit,
-    onToggleMagnetizingAction: () -> Unit,
-    onCanvasSizeUpdate: (LayoutCoordinates) -> Unit
-) = this
-    .onPointerEvent(PointerEventType.Move) { onMove(it.changes.first()) }
-    .onPointerEvent(PointerEventType.Scroll) { onScroll(it.changes.first()) }
-    .pointerInput(Unit) { detectTapGestures(onTap = onPrimaryClick) }
-    .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = onToggleMagnetizingAction)
-    .onGloballyPositioned(onCanvasSizeUpdate)
+private operator fun <T> Function0<T>.getValue(thisObj: Any?, property: KProperty<*>): T = invoke()
 
 @Composable
 private fun Info(visible: Boolean, close: () -> Unit) {
