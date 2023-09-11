@@ -107,6 +107,15 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
+    fun disconnect(ai: Int, bi: Int) {
+        adjacencyMatrix = adjacencyMatrix.apply {
+            this[ai][bi] = false
+            this[bi][ai] = false
+        }
+    }
+
+    fun toggleConnection(ai: Int, bi: Int) = if (adjacencyMatrix[ai][bi]) disconnect(ai, bi) else connect(ai, bi)
+
     var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
     var retrievingWorldOffset by remember { mutableStateOf(false) }
     var worldScale by remember { mutableStateOf(Offset(1F, 1F)) }
@@ -189,12 +198,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         magneticPointIndex = null
     }
 
-    val connectAction = connectAction@ {
+    val toggleConnectionAction = connectAction@ {
         if (!magnetizing) {
             failures += Failure.Mistake("You are not magnetizing to any point to make a connection")
             return@connectAction
         }
-        nearestNotMagneticPointIndex?.let { connect(magneticPointIndex!!, it) }
+        nearestNotMagneticPointIndex?.let { toggleConnection(magneticPointIndex!!, it) }
     }
 
     val removeAction = removeAction@ {
@@ -270,7 +279,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeys.invoke(copyShortcutPredicate::test) { copyAction.invoke() }
         observeKeys.invoke(pasteShortcutPredicate::test) { pasteAction.invoke() }
 
-        observeKeys.invoke({ it.key == Key.Spacebar }) { connectAction.invoke() }
+        observeKeys.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
         observeKeys.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
 
         observeKeys.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
@@ -429,7 +438,7 @@ private fun Info(visible: Boolean, close: () -> Unit) {
                 Ctrl/⌘ + C – Copy figure
                 Ctrl/⌘ + V – Paste figure
                 ⌫ – Remove nearest point
-                ⎵ – Connect magnetized point and other nearest point
+                ⎵ – Connect magnetized point and other nearest point if they are not connected else disconnect
                 W, A, S, D – move up, left, down, right accordingly
                 Q, E – rotate left, rotate right
                 R, T – scale width up and down
