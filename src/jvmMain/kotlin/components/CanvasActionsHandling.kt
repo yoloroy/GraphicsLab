@@ -9,22 +9,15 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 
-interface CursorActionsHandler {
-
-    fun onMove(change: PointerInputChange)
-
-    fun onScroll(change: PointerInputChange)
-
-    fun onPrimaryClick(pointerOffset: Offset)
-
-    fun onToggleMagnetizingAction()
-
-    fun onCanvasSizeUpdate(coordinates: LayoutCoordinates)
-}
-
-fun Modifier.onCursorActions(handler: CursorActionsHandler) = this
-    .onPointerEvent(PointerEventType.Move) { handler.onMove(it.changes.first()) }
-    .onPointerEvent(PointerEventType.Scroll) { handler.onScroll(it.changes.first()) }
-    .pointerInput(Unit) { detectTapGestures(onTap = handler::onPrimaryClick) }
-    .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = handler::onToggleMagnetizingAction)
-    .onGloballyPositioned(handler::onCanvasSizeUpdate)
+fun Modifier.onCursorActions(
+    onMove: (change: PointerInputChange) -> Unit,
+    onScroll: (change: PointerInputChange) -> Unit,
+    onPrimaryClick: (pointerOffset: Offset) -> Unit,
+    onToggleMagnetizingAction: () -> Unit,
+    onCanvasSizeUpdate: (coordinates: LayoutCoordinates) -> Unit
+) = this
+    .onPointerEvent(PointerEventType.Move) { onMove(it.changes.first()) }
+    .onPointerEvent(PointerEventType.Scroll) { onScroll(it.changes.first()) }
+    .pointerInput(Unit) { detectTapGestures(onTap = onPrimaryClick) }
+    .onClick(matcher = PointerMatcher.mouse(PointerButton.Secondary), onClick = onToggleMagnetizingAction)
+    .onGloballyPositioned(onCanvasSizeUpdate)

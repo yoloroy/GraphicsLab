@@ -217,6 +217,40 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
+    val onMove = { change: PointerInputChange ->
+        cursorOffset = change.position
+    }
+
+    val onScroll = { change: PointerInputChange ->
+        when (scrollMode) {
+            ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
+            ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
+            ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
+        }
+    }
+
+    val onPrimaryClick = { pointerOffset: Offset ->
+        addPoint(pointerOffset.toWorldXY())
+        magneticPointIndex.takeIf { magnetizing }?.let {
+            connect(it, points.lastIndex)
+        }
+        magneticPointIndex = points.lastIndex
+        magnetizing = true
+    }
+
+    val onToggleMagnetizingAction = {
+        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
+            magnetizing = true
+            magneticPointIndex = i
+        } ?: run {
+            magnetizing = false
+        }
+    }
+
+    val onCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
+        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+    }
+
     val transformTextToOffset = { text: String ->
         try {
             text.split(" ")
@@ -285,40 +319,13 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             Canvas(Modifier
                 .fillMaxSize()
                 .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-                .onCursorActions(object : CursorActionsHandler {
-
-                    override fun onMove(change: PointerInputChange) {
-                        cursorOffset = change.position
-                    }
-
-                    override fun onScroll(change: PointerInputChange) = when (scrollMode) {
-                        ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
-                        ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
-                        ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
-                    }
-
-                    override fun onPrimaryClick(pointerOffset: Offset) {
-                        addPoint(pointerOffset.toWorldXY())
-                        magneticPointIndex.takeIf { magnetizing }?.let {
-                            connect(it, points.lastIndex)
-                        }
-                        magneticPointIndex = points.lastIndex
-                        magnetizing = true
-                    }
-
-                    override fun onToggleMagnetizingAction() {
-                        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
-                            magnetizing = true
-                            magneticPointIndex = i
-                        } ?: run {
-                            magnetizing = false
-                        }
-                    }
-
-                    override fun onCanvasSizeUpdate(coordinates: LayoutCoordinates) {
-                        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                    }
-                })
+                .onCursorActions(
+                    onMove = onMove,
+                    onScroll = onScroll,
+                    onPrimaryClick = onPrimaryClick,
+                    onToggleMagnetizingAction = onToggleMagnetizingAction,
+                    onCanvasSizeUpdate = onCanvasSizeUpdate
+                )
             ) {
                 // TODO use translate and scale functions when it will be allowed
                 val canvasPoints = points.map { it
