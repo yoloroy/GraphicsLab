@@ -338,9 +338,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             ) {
                 // TODO use translate and scale functions when it will be allowed
                 val canvasPoints = points.map { it
-                    .run { XY((x * worldScale.x).toInt(), (y * worldScale.y).toInt()) }
-                    .rotatedXY(worldXYRotation)
-                    .plus(XY.fromOffset(worldOffset))
+                    .run { it.toMatrix() * worldScale.asScalingMatrix() * xyRotationMatrix(worldXYRotation) }
+                    .run { this[0].map { it.toInt() }.let { XY(it[0], it[1]) } }
+                    .let { it + XY.fromOffset(worldOffset) }
                     .toOffset()
                 }
 
@@ -454,6 +454,12 @@ private fun Info(visible: Boolean, close: () -> Unit) {
         }
     }
 }
+
+private fun Offset.asScalingMatrix() = listOf(
+    listOf(x, 0F, 0F),
+    listOf(0F, y, 0F),
+    listOf(0F, 0F, 1F),
+)
 
 private operator fun Offset.times(other: Offset) = Offset(x * other.x, y * other.y)
 
