@@ -9,8 +9,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -34,7 +36,7 @@ import kotlin.math.pow
 import kotlin.reflect.KProperty
 
 const val IS_TRANSPARENT_BUILD = false
-const val TWO_PI_F = (PI * PI).toFloat()
+const val TWO_PI = 2 * PI
 
 val copyShortcutPredicate: Predicate<KeyEvent> = run {
     when (currentOs) {
@@ -122,9 +124,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     // endregion
 
     // region world
-    var worldOffset by remember { mutableStateOf(Offset(0F, 0F)) }
+    var worldOffset by remember { mutableStateOf(XYZ.ZERO) }
     var retrievingWorldOffset by remember { mutableStateOf(false) }
-    var worldScale by remember { mutableStateOf(Offset(1F, 1F)) }
+    var worldScale by remember { mutableStateOf(XYZ.ONE) }
     var retrievingWorldScale by remember { mutableStateOf(false) }
     var worldXYRotation by remember { mutableStateOf(0F) }
     var worldYZRotation by remember { mutableStateOf(0F) }
@@ -137,27 +139,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     fun `🔄X`(deltaRadians: Float) { worldYZRotation += deltaRadians }
     fun `🔄Y`(deltaRadians: Float) { worldZXRotation += deltaRadians }
 
-    fun Offset.toWorldXY() = XYZ.fromOffset((this - worldOffset) / worldScale) `🔄Z` -worldXYRotation
-
-    LaunchedEffect(worldYZRotation, worldZXRotation, worldXYRotation) {
-        if (
-            -TWO_PI_F > worldYZRotation || worldYZRotation > TWO_PI_F ||
-            -TWO_PI_F > worldZXRotation || worldZXRotation > TWO_PI_F ||
-            -TWO_PI_F > worldXYRotation || worldXYRotation > TWO_PI_F
-        ) {
-            val rotationProduct = combinedRotationMatrix(worldXYRotation, worldYZRotation, worldZXRotation)
-            retrieveNiceXYZAnglesFromRotationMatrix(rotationProduct).let { (x, y, z) ->
-                worldYZRotation = x
-                worldZXRotation = y
-                worldXYRotation = z
-            }
-        }
-    }
-
     LaunchedEffect(worldScale) {
         if (worldScale.x > 0F && worldScale.y > 0F) return@LaunchedEffect
 
-        worldScale = Offset(0.01F, 0.01F)
+        worldScale = XYZ(0.01F, 0.01F, 0.01F)
         failures += Failure.Mistake("World scale should be positive")
     }
     // endregion
@@ -165,27 +150,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     // region user utils
     var cursorOffset by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
-    var magnetizing by remember { mutableStateOf(true) }
-    var magneticPointIndex by remember { mutableStateOf<Int?>(null) }
-    val magneticPoint by remember { derivedStateOf { magneticPointIndex?.let { points[it] } } }
-    val nearestNotMagneticPoint by remember {
-        derivedStateOf {
-            cursorOffset?.toWorldXY()?.let {
-                magneticPoint?.let { magneticPoint ->
-                    (points - magneticPoint).nearestPointTo(it)
-                } ?: run {
-                    points.nearestPointTo(it)
-                }
-            }
-        }
-    }
-    val nearestNotMagneticPointIndex by remember { derivedStateOf { nearestNotMagneticPoint?.let { points.indexOf(nearestNotMagneticPoint) } } }
     // endregion
-
-    LaunchedEffect(magnetizing) {
-        if (magnetizing) return@LaunchedEffect
-        magneticPointIndex = null
-    }
 
     val copyAction = {
         try {
@@ -214,8 +179,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                     this[bi][ai] = true
                 }
             }
-            magnetizing = false
-            magneticPointIndex = null
         } catch (e: SerializationException) {
             failures += Failure.Mistake("You did not pasted save")
         } catch (e: IllegalArgumentException) {
@@ -226,77 +189,21 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val clearAction = {
         points = emptyList()
         adjacencyMatrix = mutableListOf()
-        magnetizing = false
-        magneticPointIndex = null
-    }
-
-    val toggleConnectionAction = connectAction@ {
-        if (!magnetizing) {
-            failures += Failure.Mistake("You are not magnetizing to any point to make a connection")
-            return@connectAction
-        }
-        nearestNotMagneticPointIndex?.let { toggleConnection(magneticPointIndex!!, it) }
-    }
-
-    val removeAction = removeAction@ {
-        if (magnetizing) {
-            failures += Failure.Mistake("Toggle magnetizing off for enabling remove action")
-            return@removeAction
-        }
-
-        cursorOffset?.let { cursorOffset ->
-            val pointToRemove = points.nearestPointTo(cursorOffset.toWorldXY()) ?: run {
-                failures += Failure.Mistake("There no points to remove")
-                return@removeAction
-            }
-            val index = points.indexOf(pointToRemove)
-            points -= pointToRemove
-            adjacencyMatrix = adjacencyMatrix.apply {
-                forEach { row -> row.removeAt(index) }
-                removeAt(index)
-            }
-        }
     }
 
     val onMove = { change: PointerInputChange ->
         cursorOffset = change.position
     }
 
-    val onScroll = { change: PointerInputChange ->
-        when (scrollMode) {
-            ScrollMode.Movement -> worldOffset += change.scrollDelta * worldScale
-            ScrollMode.Zoom -> worldScale *= change.scrollDelta.run { Offset(1.1F.pow(x / 10), 1.1F.pow(y / 10)) }
-            ScrollMode.RotationXY -> worldXYRotation += change.scrollDelta.y / 50
-        }
-    }
-
-    val onPrimaryClick = { pointerOffset: Offset ->
-        addPoint(pointerOffset.toWorldXY())
-        magneticPointIndex.takeIf { magnetizing }?.let {
-            connect(it, points.lastIndex)
-        }
-        magneticPointIndex = points.lastIndex
-        magnetizing = true
-    }
-
-    val onToggleMagnetizingAction = {
-        nearestNotMagneticPointIndex.takeUnless { magnetizing }?.let { i ->
-            magnetizing = true
-            magneticPointIndex = i
-        } ?: run {
-            magnetizing = false
-        }
-    }
-
     val onCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
         canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
     }
 
-    val transformTextToOffset = { text: String ->
+    val transformTextToXYZ = { text: String ->
         try {
             text.split(" ")
                 .map { it.toFloat() }
-                .let { Offset(it[0], it[1]) }
+                .let { XYZ(it[0], it[1], it[2]) }
         } catch (e: NumberFormatException) {
             null
         } catch (e: IndexOutOfBoundsException) {
@@ -310,9 +217,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     LaunchedEffect(Unit) {
         observeKeys.invoke(copyShortcutPredicate::test) { copyAction.invoke() }
         observeKeys.invoke(pasteShortcutPredicate::test) { pasteAction.invoke() }
-
-        observeKeys.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
-        observeKeys.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
 
         observeKeys.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
         observeKeys.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
@@ -364,25 +268,24 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 .fillMaxSize()
                 .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
                 .onCursorActions(
-                    onMove = {}, // onMove, // TODO moving on current plane
+                    onMove = onMove, // onMove, // TODO moving on current plane
                     onScroll = {}, // onScroll, // TODO scale on current plane
                     onPrimaryClick = {}, // onPrimaryClick, // TODO
                     onToggleMagnetizingAction = {}, // onToggleMagnetizingAction, // TODO replace with context menu
                     onCanvasSizeUpdate = onCanvasSizeUpdate
                 )
             ) {
-                val canvasPoints = points.map { it
-                    .times(XYZ.fromOffset(worldScale))
-                    .`🔄Z`(worldXYRotation)
-                    .`🔄X`(worldYZRotation)
-                    .`🔄Y`(worldZXRotation)
-                    .plus(XYZ.fromOffset(worldOffset))
-                    .toOffset()
+                val canvasPoints = points.map {
+                    XYZ::toOffset.invoke(it
+                        scaled worldScale
+                        `🔄Z` worldXYRotation
+                        `🔄X` worldYZRotation
+                        `🔄Y` worldZXRotation
+                        offset worldOffset
+                    )
                 }
 
-                // TODO rotation of centre
-                drawLine(Color.Red, Offset(0F, worldOffset.y), Offset(size.width, worldOffset.y))
-                drawLine(Color.Red, Offset(worldOffset.x, 0F), Offset(worldOffset.x, size.height))
+                drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
 
                 for ((ai, bi) in connections) {
                     drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
@@ -390,20 +293,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
                 for (point in canvasPoints) {
                     drawCircle(Color.Black, 4F, point)
-                }
-
-                cursorOffset?.let { cursorOffset ->
-                    magneticPointIndex?.let { i ->
-                        drawLine(Color.Black, cursorOffset, canvasPoints[i])
-                    }
-                    nearestNotMagneticPointIndex?.let { i ->
-                        drawLine(
-                            Color.Black,
-                            cursorOffset,
-                            canvasPoints[i],
-                            pathEffect = PathEffect.dashPathEffect(FloatArray(2) { 8F }, 0F)
-                        )
-                    }
                 }
             }
 
@@ -413,10 +302,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         // region dialogs
         Info(isInfoOpen) { isInfoOpen = false }
         ValueRetrieverDialog(
-            startValue = worldOffset.let { "${it.x.toInt()} ${it.y.toInt()}" },
+            startValue = worldOffset.let { "${it.x} ${it.y} ${it.z}" },
             visible = retrievingWorldOffset,
             title = "World Offset (two integer numbers separated by space)",
-            transform = transformTextToOffset,
+            transform = transformTextToXYZ,
             setValueAndCloseDialog = {
                 worldOffset = it
                 retrievingWorldOffset = false
@@ -426,10 +315,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         )
         ValueRetrieverDialog(
-            startValue = worldScale.let { "${it.x.toInt()} ${it.y.toInt()}" },
+            startValue = worldScale.let { "${it.x} ${it.y} ${it.z}" },
             visible = retrievingWorldScale,
-            title = "World Scale (two integer numbers separated by space)",
-            transform = transformTextToOffset,
+            title = "World Scale (three numbers separated by space)",
+            transform = transformTextToXYZ,
             setValueAndCloseDialog = {
                 worldScale = it
                 retrievingWorldScale = false
@@ -439,10 +328,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         )
         ValueRetrieverDialog(
-            startValue = toDegrees(worldXYRotation.toDouble()).toString(),
+            startValue = toDegrees(worldXYRotation.toDouble() % TWO_PI).toString(),
             visible = retrievingWorldXYRotation,
             title = "World Rotation in XY (in degrees)",
-            transform = { it.toDoubleOrNull() },
+            transform = { it.toDoubleOrNull()?.let { it % 360 } },
             setValueAndCloseDialog = {
                 worldXYRotation = toRadians(it).toFloat()
                 retrievingWorldXYRotation = false
@@ -452,10 +341,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         )
         ValueRetrieverDialog(
-            startValue = toDegrees(worldYZRotation.toDouble()).toString(),
+            startValue = toDegrees(worldYZRotation.toDouble() % TWO_PI).toString(),
             visible = retrievingWorldYZRotation,
             title = "World Rotation in YZ (in degrees)",
-            transform = { it.toDoubleOrNull() },
+            transform = { it.toDoubleOrNull()?.let { it % 360 } },
             setValueAndCloseDialog = {
                 worldYZRotation = toRadians(it).toFloat()
                 retrievingWorldYZRotation = false
@@ -465,10 +354,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
         )
         ValueRetrieverDialog(
-            startValue = toDegrees(worldZXRotation.toDouble()).toString(),
+            startValue = toDegrees(worldZXRotation.toDouble() % TWO_PI).toString(),
             visible = retrievingWorldZXRotation,
             title = "World Rotation in ZX (in degrees)",
-            transform = { it.toDoubleOrNull() },
+            transform = { it.toDoubleOrNull()?.let { it % 360 } },
             setValueAndCloseDialog = {
                 worldZXRotation = toRadians(it).toFloat()
                 retrievingWorldZXRotation = false
@@ -479,6 +368,25 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         )
         // endregion
     }
+}
+
+private fun DrawScope.drawCoordinateAxes(offset: XYZ, xYRotation: Float, yZRotation: Float, zXRotation: Float) {
+    val points = listOf(
+        XYZ(-1f, 0f, 0f), XYZ(1f, 0f, 0f), XYZ(0f, -1f, 0f), XYZ(0f, 1f, 0f), XYZ(0f, 0f, -1f), XYZ(0f, 0f, 1f)
+    ).map {
+        (it
+            `🔄Z` xYRotation
+            `🔄X` yZRotation
+            `🔄Y` zXRotation
+            scaled XYZ(size.width, size.height)
+            scaled XYZ(10F, 10F)
+            offset offset
+        ).toOffset()
+    }
+
+    drawLine(Color.Red, points[0], points[1])
+    drawLine(Color.Blue, points[2], points[3])
+    drawLine(Color.Green, points[4], points[5])
 }
 
 private operator fun <T> Function0<T>.getValue(thisObj: Any?, property: KProperty<*>): T = invoke()
@@ -518,20 +426,9 @@ private fun Info(visible: Boolean, close: () -> Unit) {
     }
 }
 
-private fun Offset.asScalingMatrix() = listOf(
-    listOf(x, 0F, 0F, 0F),
-    listOf(0F, y, 0F, 0F),
-    listOf(0F, 0F, 1F, 0F),
-    listOf(0F, 0F, 0F, 1F)
-)
-
 private operator fun Offset.times(other: Offset) = Offset(x * other.x, y * other.y)
 
 private operator fun Offset.div(other: Offset) = Offset(x / other.x, y / other.y)
-
-private fun Offset.rotated(radians: Float) = (listOf(listOf(x, y, 1f, 1f)) * xyRotationMatrix(radians)).let { Offset(it[0][0], it[0][1]) }
-
-private fun List<XYZ>.nearestPointTo(destination: XYZ) = minByOrNull { point -> point.distanceSquaredTo(destination) }
 
 fun main() = application {
     val coroutineScope = rememberCoroutineScope()

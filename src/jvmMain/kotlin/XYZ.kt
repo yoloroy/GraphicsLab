@@ -23,6 +23,10 @@ value class XYZ(val list: List<Float>) {
 
     companion object {
         fun fromOffset(offset: Offset) = XYZ(offset.x, offset.y)
+
+        val ZERO = XYZ(0F, 0F, 0F)
+
+        val ONE = XYZ(1F, 1F, 1F)
     }
 
     fun toOffset() = Offset(x, y)
@@ -39,6 +43,10 @@ value class XYZ(val list: List<Float>) {
 
     operator fun times(other: XYZ) = XYZ((toMatrix() * other.toOtherMatrix()).map { it[0] })
 
+    infix fun scaled(other: XYZ) = this * other
+
+    infix fun offset(other: XYZ) = this + other
+
     infix fun `🔄Z`(radians: Float) = XYZ((toOtherMatrix() * xyRotationMatrix(radians))[0])
 
     infix fun `🔄Y`(radians: Float) = XYZ((toOtherMatrix() * zxRotationMatrix(radians))[0])
@@ -46,4 +54,6 @@ value class XYZ(val list: List<Float>) {
     infix fun `🔄X`(radians: Float) = XYZ((toOtherMatrix() * yzRotationMatrix(radians))[0])
 
     fun distanceSquaredTo(other: XYZ) = (this - other).run { x * x + y * y + z * z }
+
+    fun copy(x: Float = this.x, y: Float = this.y, z: Float = this.z) = XYZ(x, y, z)
 }
