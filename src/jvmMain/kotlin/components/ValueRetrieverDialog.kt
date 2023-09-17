@@ -23,7 +23,7 @@ fun <T> ValueRetrieverDialog(
     close: () -> Unit,
     startValue: String
 ) {
-    var input by remember { mutableStateOf(startValue) }
+    var input by remember(startValue) { mutableStateOf(startValue) }
     var fail by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(input) {
