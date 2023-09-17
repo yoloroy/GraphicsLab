@@ -276,13 +276,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                 )
             ) {
                 val canvasPoints = points.map {
-                    XYZ::toOffset.invoke(it
-                        scaled worldScale
+                    (it scaled worldScale
                         `🔄Z` worldXYRotation
                         `🔄X` worldYZRotation
                         `🔄Y` worldZXRotation
                         offset worldOffset
-                    )
+                    ).toOffset()
                 }
 
                 drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
