@@ -85,6 +85,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var isInfoOpen by remember { mutableStateOf(false) }
     // endregion
 
+    // region user utils
+    var cursorOffset by remember { mutableStateOf<Offset?>(null) }
+    var canvasSize by remember { mutableStateOf(Offset.Zero) }
+    // endregion
+
     // region points
     var points by remember { mutableStateOf(listOf<XYZ>()) }
     var adjacencyMatrix by remember { mutableStateOf(mutableListOf<MutableList<Boolean>>(), neverEqualPolicy()) }
@@ -95,14 +100,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             .withIndex()
             .filter { it.value }
             .map { (bi, _) -> ai to bi }
-        }
-    }
-
-    fun addPoint(xyz: XYZ) {
-        points += xyz
-        adjacencyMatrix = adjacencyMatrix.apply {
-            forEach { row -> row += false }
-            this += MutableList(points.size) { false }
         }
     }
 
@@ -135,6 +132,19 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var retrievingWorldYZRotation by remember { mutableStateOf(false) }
     var retrievingWorldZXRotation by remember { mutableStateOf(false) }
 
+    val canvasPoints by remember {
+        derivedStateOf {
+            points.map {
+                (it scaled worldScale
+                    `🔄Z` worldXYRotation
+                    `🔄X` worldYZRotation
+                    `🔄Y` worldZXRotation
+                    offset worldOffset
+                ).toOffset()
+            }
+        }
+    }
+
     fun `🔄Z`(deltaRadians: Float) { worldXYRotation += deltaRadians }
     fun `🔄X`(deltaRadians: Float) { worldYZRotation += deltaRadians }
     fun `🔄Y`(deltaRadians: Float) { worldZXRotation += deltaRadians }
@@ -145,11 +155,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         worldScale = XYZ(0.01F, 0.01F, 0.01F)
         failures += Failure.Mistake("World scale should be positive")
     }
-    // endregion
-
-    // region user utils
-    var cursorOffset by remember { mutableStateOf<Offset?>(null) }
-    var canvasSize by remember { mutableStateOf(Offset.Zero) }
     // endregion
 
     val copyAction = {
@@ -275,15 +280,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                     onCanvasSizeUpdate = onCanvasSizeUpdate
                 )
             ) {
-                val canvasPoints = points.map {
-                    (it scaled worldScale
-                        `🔄Z` worldXYRotation
-                        `🔄X` worldYZRotation
-                        `🔄Y` worldZXRotation
-                        offset worldOffset
-                    ).toOffset()
-                }
-
                 drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
 
                 for ((ai, bi) in connections) {

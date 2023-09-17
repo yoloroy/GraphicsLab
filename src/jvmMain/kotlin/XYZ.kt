@@ -31,9 +31,9 @@ value class XYZ(val list: List<Float>) {
 
     fun toOffset() = Offset(x, y)
 
-    fun toMatrix() = list.map { listOf(it) } // matrix with one row of size 4
+    fun toMatrix() = list.map { listOf(it) } // matrix of size 4 with one column
 
-    fun toOtherMatrix() = listOf(list) // matrix of size 4 with one column
+    fun toOtherMatrix() = listOf(list) // matrix with one row of size 4
 
     operator fun unaryMinus() = XYZ(-x, -y)
 
