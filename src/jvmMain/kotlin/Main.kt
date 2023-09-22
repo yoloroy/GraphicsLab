@@ -1,6 +1,5 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
@@ -9,19 +8,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.input.pointer.*
-import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
-import components.*
+import components.Failure
+import components.FailuresLog
+import components.ValueRetrieverDialog
+import components.onCursorActions
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -30,27 +31,11 @@ import kotlinx.serialization.json.Json
 import util.*
 import java.lang.Math.toDegrees
 import java.lang.Math.toRadians
-import java.util.function.Predicate
 import kotlin.math.PI
-import kotlin.math.pow
 import kotlin.reflect.KProperty
 
 const val IS_TRANSPARENT_BUILD = false
 const val TWO_PI = 2 * PI
-
-val copyShortcutPredicate: Predicate<KeyEvent> = run {
-    when (currentOs) {
-        OS.MAC -> Predicate { it.isMetaPressed && it.key == Key.C }
-        else -> Predicate { it.isCtrlPressed && it.key == Key.C }
-    }
-}
-
-val pasteShortcutPredicate: Predicate<KeyEvent> = run {
-    when (currentOs) {
-        OS.MAC -> Predicate { it.isMetaPressed && it.key == Key.V }
-        else -> Predicate { it.isCtrlPressed && it.key == Key.V }
-    }
-}
 
 @Serializable
 data class SaveState(
@@ -62,17 +47,26 @@ data class SaveState(
     }
 }
 
-enum class ScrollMode { Movement, Zoom, RotationXY }
 
 context(FrameWindowScope)
 @Composable
 @Preview
 fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val coroutineScope = rememberCoroutineScope()
+
+    var keysFlow by remember(keysGlobalFlow) { mutableStateOf(keysGlobalFlow) }
+    val observeKeysPressed = { predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit ->
+        keysFlow
+            .partition { it.type == KeyEventType.KeyDown && predicate(it) }
+            .run { keysFlow = second; first }
+            .distinctUntilChanged()
+            .onEach(action)
+            .launchIn(coroutineScope)
+    }
     val observeKeys = { predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit ->
-        keysGlobalFlow
-            .filter { it.type == KeyEventType.KeyDown }
-            .filter(predicate)
+        keysFlow
+            .partition(predicate)
+            .run { keysFlow = second; first }
             .distinctUntilChanged()
             .onEach(action)
             .launchIn(coroutineScope)
@@ -81,13 +75,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     // region ui
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
     var failures by remember { mutableStateOf(listOf<Failure>()) }
-    var scrollMode by remember { mutableStateOf(ScrollMode.Movement) }
     var isInfoOpen by remember { mutableStateOf(false) }
     // endregion
 
     // region user utils
-    var cursorOffset by remember { mutableStateOf<Offset?>(null) }
-    var canvasSize by remember { mutableStateOf(Offset.Zero) }
+    var isShiftPressed by remember { mutableStateOf(false) }
     // endregion
 
     // region points
@@ -118,16 +110,33 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     fun toggleConnection(ai: Int, bi: Int) = if (adjacencyMatrix[ai][bi]) disconnect(ai, bi) else connect(ai, bi)
+
+    fun addPoint(xyz: XYZ): Int {
+        points += xyz
+        adjacencyMatrix = adjacencyMatrix.apply {
+            forEach { it += false }
+            this += MutableList(points.size) { false }
+        }
+        return points.lastIndex
+    }
+
+    fun removePointAt(index: Int) {
+        points = points.dropAt(index)
+        adjacencyMatrix = adjacencyMatrix.apply {
+            removeAt(index)
+            forEach { it.removeAt(index) }
+        }
+    }
     // endregion
 
     // region world
     var worldOffset by remember { mutableStateOf(XYZ.ZERO) }
-    var retrievingWorldOffset by remember { mutableStateOf(false) }
     var worldScale by remember { mutableStateOf(XYZ.ONE) }
-    var retrievingWorldScale by remember { mutableStateOf(false) }
     var worldXYRotation by remember { mutableStateOf(0F) }
     var worldYZRotation by remember { mutableStateOf(0F) }
     var worldZXRotation by remember { mutableStateOf(0F) }
+    var retrievingWorldOffset by remember { mutableStateOf(false) }
+    var retrievingWorldScale by remember { mutableStateOf(false) }
     var retrievingWorldXYRotation by remember { mutableStateOf(false) }
     var retrievingWorldYZRotation by remember { mutableStateOf(false) }
     var retrievingWorldZXRotation by remember { mutableStateOf(false) }
@@ -149,12 +158,35 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     fun `🔄X`(deltaRadians: Float) { worldYZRotation += deltaRadians }
     fun `🔄Y`(deltaRadians: Float) { worldZXRotation += deltaRadians }
 
+    fun Offset.toWorldXYZ() = toWorldXYZ(worldOffset, worldScale, worldXYRotation, worldYZRotation, worldZXRotation)
+
     LaunchedEffect(worldScale) {
         if (worldScale.x > 0F && worldScale.y > 0F) return@LaunchedEffect
 
         worldScale = XYZ(0.01F, 0.01F, 0.01F)
         failures += Failure.Mistake("World scale should be positive")
     }
+    // endregion
+
+    // region Cursor
+    var cursorOffset by remember { mutableStateOf(Offset.Zero) }
+
+    val nearestPointIndex by remember {
+        derivedStateOf {
+            canvasPoints.takeIfNotEmpty()?.indexOfMinBy { it.distanceTo(cursorOffset) }
+        }
+    }
+    var manuallySelectedPoints by remember { mutableStateOf(listOf<Int>()) }
+    val affectedPointsIndices by remember {
+        derivedStateOf {
+            manuallySelectedPoints.takeIfNotEmpty()
+                ?: nearestPointIndex?.let { listOf(it) }
+                ?: emptyList()
+        }
+    }
+
+    val contextMenuState = remember { ContextMenuState() }
+    val contextMenuSavedCursorOffset = remember(contextMenuState.status) { cursorOffset }
     // endregion
 
     val copyAction = {
@@ -196,17 +228,74 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         adjacencyMatrix = mutableListOf()
     }
 
+    fun deselectionContext(block: () -> Unit) = ({
+        block()
+        manuallySelectedPoints = emptyList()
+    })
+
+    val selectSinglePointAction = {
+        nearestPointIndex?.let {
+            if (isShiftPressed) {
+                manuallySelectedPoints += it
+            } else {
+                manuallySelectedPoints = listOf(it)
+            }
+        } ?: run {
+            failures += Failure.Mistake("Nearest point does not exists")
+        }
+    }
+
+    val selectAllAction = {
+        manuallySelectedPoints = points.indices.toList()
+    }
+
+    val createPointAction = { savedCursorOffset: Offset ->
+        addPoint(savedCursorOffset.toWorldXYZ().also { println("new point: $it") })
+    }
+
+    val connectAction = deselectionContext {
+        for ((ai, bi) in affectedPointsIndices.combinationsOfPairs()) {
+            connect(ai, bi)
+        }
+    }
+
+    val disconnectAction = deselectionContext {
+        for ((ai, bi) in affectedPointsIndices.combinationsOfPairs()) {
+            disconnect(ai, bi)
+        }
+    }
+
+    val toggleConnectionAction = deselectionContext {
+        for ((ai, bi) in affectedPointsIndices.combinationsOfPairs()) {
+            toggleConnection(ai, bi)
+        }
+    }
+
+    val removeAction = deselectionContext {
+        for (i in affectedPointsIndices) {
+            removePointAt(i)
+        }
+    }
+
     val onMove = { change: PointerInputChange ->
         cursorOffset = change.position
     }
 
-    val onCanvasSizeUpdate = { coordinates: LayoutCoordinates ->
-        canvasSize = Offset(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+    val onPrimaryClick = onPrimaryClick@ {
+        if (isShiftPressed) {
+            nearestPointIndex?.let {
+                manuallySelectedPoints += it
+            } ?: run {
+                failures += Failure.Mistake("Nearest point does not exists")
+            }
+            return@onPrimaryClick
+        }
+        manuallySelectedPoints = emptyList()
     }
 
     val transformTextToXYZ = { text: String ->
         try {
-            text.split(" ")
+            text.trim().split(" ")
                 .map { it.toFloat() }
                 .let { XYZ(it[0], it[1], it[2]) }
         } catch (e: NumberFormatException) {
@@ -220,30 +309,35 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     LaunchedEffect(Unit) {
-        observeKeys.invoke(copyShortcutPredicate::test) { copyAction.invoke() }
-        observeKeys.invoke(pasteShortcutPredicate::test) { pasteAction.invoke() }
+        observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.C }) { copyAction.invoke() }
+        observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.V }) { pasteAction.invoke() }
 
-        observeKeys.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
-        observeKeys.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
-        observeKeys.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
-        observeKeys.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
+        observeKeys.invoke({ it.key in listOf(Key.ShiftLeft, Key.ShiftRight) }) { isShiftPressed = it.type == KeyEventType.KeyDown }
+        observeKeysPressed.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
 
-        observeKeys.invoke({ it.key == Key.R }) { worldScale = worldScale.copy(x = worldScale.x * 0.99F) }
-        observeKeys.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
-        observeKeys.invoke({ it.key == Key.F }) { worldScale = worldScale.copy(y = worldScale.y * 0.99F) }
-        observeKeys.invoke({ it.key == Key.G }) { worldScale = worldScale.copy(y = worldScale.y / 0.99F) }
+        observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
+        observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
 
-        observeKeys.invoke({ it.key == Key.Q }) { `🔄Z`(-toRadians(5.0).toFloat()) }
-        observeKeys.invoke({ it.key == Key.E }) { `🔄Z`(+toRadians(5.0).toFloat()) }
-        observeKeys.invoke({ it.key == Key.Z }) { `🔄X`(-toRadians(5.0).toFloat()) }
-        observeKeys.invoke({ it.key == Key.X }) { `🔄X`(+toRadians(5.0).toFloat()) }
-        observeKeys.invoke({ it.key == Key.O }) { `🔄Y`(-toRadians(5.0).toFloat()) }
-        observeKeys.invoke({ it.key == Key.L }) { `🔄Y`(+toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
+        observeKeysPressed.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
+        observeKeysPressed.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
+        observeKeysPressed.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { worldOffset = worldOffset.copy(z = worldOffset.y + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { worldOffset = worldOffset.copy(z = worldOffset.y - 4) }
 
-        observeKeys.invoke({ it.key == Key.Y }) { scrollMode = ScrollMode.Movement }
-        observeKeys.invoke({ it.key == Key.U }) { scrollMode = ScrollMode.Zoom }
+        observeKeysPressed.invoke({ it.key == Key.R }) { worldScale = worldScale.copy(x = worldScale.x * 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.F }) { worldScale = worldScale.copy(y = worldScale.y * 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.G }) { worldScale = worldScale.copy(y = worldScale.y / 0.99F) }
 
-        observeKeys.invoke({ it.key == Key.I }) { isInfoOpen = !isInfoOpen }
+        observeKeysPressed.invoke({ it.key == Key.Q }) { `🔄Z`(-toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.E }) { `🔄Z`(+toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.Z }) { `🔄X`(-toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.X }) { `🔄X`(+toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.C }) { `🔄Y`(-toRadians(5.0).toFloat()) }
+        observeKeysPressed.invoke({ it.key == Key.V }) { `🔄Y`(+toRadians(5.0).toFloat()) }
+
+        observeKeysPressed.invoke({ it.key == Key.I }) { isInfoOpen = !isInfoOpen }
     }
 
     MenuBar {
@@ -269,25 +363,44 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     MaterialTheme {
         Box(Modifier.fillMaxSize()) {
-            Canvas(Modifier
-                .fillMaxSize()
-                .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-                .onCursorActions(
-                    onMove = onMove, // onMove, // TODO moving on current plane
-                    onScroll = {}, // onScroll, // TODO scale on current plane
-                    onPrimaryClick = {}, // onPrimaryClick, // TODO
-                    onToggleMagnetizingAction = {}, // onToggleMagnetizingAction, // TODO replace with context menu
-                    onCanvasSizeUpdate = onCanvasSizeUpdate
-                )
+            ContextMenuArea(
+                items = { listOfNotNull(
+                    ContextMenuItem("Create Point") { createPointAction(contextMenuSavedCursorOffset) },
+                    ContextMenuItem("Remove") { removeAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
+                    ContextMenuItem("Select") { selectSinglePointAction() }.takeIf { nearestPointIndex != null },
+                    ContextMenuItem("Connect") { connectAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
+                    ContextMenuItem("Disconnect") { disconnectAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
+                ) },
+                state = contextMenuState
             ) {
-                drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
+                Canvas(
+                   Modifier
+                        .fillMaxSize()
+                        .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
+                        .onCursorActions(
+                            onMove = onMove, // onMove, // TODO moving on current plane
+                            onScroll = {}, // onScroll, // TODO scale on current plane
+                            onPrimaryClick = onPrimaryClick,
+                            onSelectArea = {}
+                        )
+                ) {
+                    drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
 
-                for ((ai, bi) in connections) {
-                    drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
-                }
+                    for ((ai, bi) in connections) {
+                        drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
+                    }
 
-                for (point in canvasPoints) {
-                    drawCircle(Color.Black, 4F, point)
+                    for (point in canvasPoints) {
+                        drawCircle(Color.Black, 2F, point)
+                    }
+
+                    for (index in affectedPointsIndices) {
+                        drawCircle(Color.Black, 4F, canvasPoints[index], style = Stroke(1f))
+                    }
+
+                    nearestPointIndex?.let { nearestPointIndex ->
+                        drawLine(Color.Black, cursorOffset, canvasPoints[nearestPointIndex], pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f))
+                    }
                 }
             }
 
@@ -299,7 +412,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         ValueRetrieverDialog(
             startValue = worldOffset.let { "${it.x} ${it.y} ${it.z}" },
             visible = retrievingWorldOffset,
-            title = "World Offset (two integer numbers separated by space)",
+            title = "World Offset (three numbers separated by space)",
             transform = transformTextToXYZ,
             setValueAndCloseDialog = {
                 worldOffset = it
@@ -391,7 +504,7 @@ private fun Info(visible: Boolean, close: () -> Unit) {
     if (!visible) return
 
     Dialog(
-        visible = visible,
+        visible = true,
         title = "Info",
         onCloseRequest = close
     ) {
@@ -401,17 +514,18 @@ private fun Info(visible: Boolean, close: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         ) {
             Text("""
+                Dashed line – Path to nearest point
+
+                Shift + Primary click – Add nearest point to selection
+                Secondary click – Open context menu
                 Ctrl/⌘ + C – Copy figure
                 Ctrl/⌘ + V – Paste figure
                 ⌫ – Remove nearest point
-                ⎵ – Connect magnetized point and other nearest point if they are not connected else disconnect
+                ⎵ – Toggle connection pairwise between all selected points
                 W, A, S, D – move up, left, down, right accordingly
-                Q, E – rotate left, rotate right
-                R, T – scale width up and down
-                F, G – scale height up and down
-                Y – change scroll mode to movement
-                U – change scroll mode to zooming
-                H – change scroll mode to xy rotation
+                Q, E – rotate left, rotate right compass-like on XY
+                Z, X – rotate left, rotate right compass-like on YZ
+                C, V – rotate left, rotate right compass-like on ZY
             """.trimIndent())
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = close) {

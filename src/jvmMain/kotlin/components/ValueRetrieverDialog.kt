@@ -3,15 +3,12 @@ package components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.TextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.window.Dialog
 
 @Composable
@@ -33,7 +30,7 @@ fun <T> ValueRetrieverDialog(
     if (!visible) return
 
     Dialog(
-        visible = visible,
+        visible = true,
         title = title,
         onCloseRequest = close
     ) {
