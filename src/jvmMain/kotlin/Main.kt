@@ -290,7 +290,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             }
             return@onPrimaryClick
         }
-        manuallySelectedPoints = emptyList()
+        selectSinglePointAction()
     }
 
     val transformTextToXYZ = { text: String ->
@@ -318,12 +318,12 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
         observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
 
-        observeKeysPressed.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
-        observeKeysPressed.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
         observeKeysPressed.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
+        observeKeysPressed.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
         observeKeysPressed.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { worldOffset = worldOffset.copy(z = worldOffset.y + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { worldOffset = worldOffset.copy(z = worldOffset.y - 4) }
+        observeKeysPressed.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { worldOffset = worldOffset.copy(z = worldOffset.z + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { worldOffset = worldOffset.copy(z = worldOffset.z - 4) }
 
         observeKeysPressed.invoke({ it.key == Key.R }) { worldScale = worldScale.copy(x = worldScale.x * 0.99F) }
         observeKeysPressed.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
