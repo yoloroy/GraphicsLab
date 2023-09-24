@@ -15,3 +15,5 @@ fun <T> List<T>.dropAt(index: Int): List<T> = when {
 fun <T> List<T>.takeIfNotEmpty() = takeIf { isNotEmpty() }
 
 fun <T> List<T>.combinationsOfPairs() = flatMapIndexed { ai, a -> List(lastIndex - ai) { i -> a to this[i + ai + 1] } }
+
+fun <T> List<IndexedValue<T>>.retrieveIndices() = map { it.index }

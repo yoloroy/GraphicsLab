@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -19,10 +21,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
-import components.Failure
-import components.FailuresLog
-import components.ValueRetrieverDialog
-import components.onCursorActions
+import components.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -32,6 +31,8 @@ import util.*
 import java.lang.Math.toDegrees
 import java.lang.Math.toRadians
 import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.reflect.KProperty
 
 const val IS_TRANSPARENT_BUILD = false
@@ -47,6 +48,9 @@ data class SaveState(
     }
 }
 
+enum class DragMode {
+    Selection, Drag
+}
 
 context(FrameWindowScope)
 @Composable
@@ -141,18 +145,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     var retrievingWorldYZRotation by remember { mutableStateOf(false) }
     var retrievingWorldZXRotation by remember { mutableStateOf(false) }
 
-    val canvasPoints by remember {
-        derivedStateOf {
-            points.map {
-                (it scaled worldScale
-                    `🔄Z` worldXYRotation
-                    `🔄X` worldYZRotation
-                    `🔄Y` worldZXRotation
-                    offset worldOffset
-                ).toOffset()
-            }
-        }
-    }
+    fun XYZ.toCanvas() = scaled(worldScale).`🔄Z`(worldXYRotation).`🔄X`(worldYZRotation).`🔄Y`(worldZXRotation).offset(worldOffset).toOffset()
+
+    val canvasPoints by remember { derivedStateOf { points.map { it.toCanvas() } } }
 
     fun `🔄Z`(deltaRadians: Float) { worldXYRotation += deltaRadians }
     fun `🔄X`(deltaRadians: Float) { worldYZRotation += deltaRadians }
@@ -170,6 +165,10 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
     // region Cursor
     var cursorOffset by remember { mutableStateOf(Offset.Zero) }
+    var dragMode by remember { mutableStateOf(DragMode.Selection) }
+    val cursorDragState = rememberCursorDragState(cursorOffset)
+
+    fun CursorDragState.xyzDiff() = end.toWorldXYZ() - start.toWorldXYZ()
 
     val nearestPointIndex by remember {
         derivedStateOf {
@@ -188,6 +187,14 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     val contextMenuState = remember { ContextMenuState() }
     val contextMenuSavedCursorOffset = remember(contextMenuState.status) { cursorOffset }
     // endregion
+
+    val switchToDragModeAction = {
+        dragMode = DragMode.Drag
+    }
+
+    val switchToSelectionModeAction = {
+        dragMode = DragMode.Selection
+    }
 
     val copyAction = {
         try {
@@ -229,16 +236,21 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     fun deselectionContext(block: () -> Unit) = ({
+        switchToSelectionModeAction()
         block()
         manuallySelectedPoints = emptyList()
     })
 
     val selectSinglePointAction = {
+        switchToSelectionModeAction()
         nearestPointIndex?.let {
-            if (isShiftPressed) {
-                manuallySelectedPoints += it
-            } else {
-                manuallySelectedPoints = listOf(it)
+            manuallySelectedPoints = when {
+                isShiftPressed -> when (it) {
+                    in manuallySelectedPoints -> manuallySelectedPoints - it
+                    else -> manuallySelectedPoints + it
+                }
+                listOf(it) == manuallySelectedPoints -> emptyList()
+                else -> listOf(it)
             }
         } ?: run {
             failures += Failure.Mistake("Nearest point does not exists")
@@ -249,8 +261,35 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         manuallySelectedPoints = points.indices.toList()
     }
 
+    val selectAreaAction = { rect: Rect ->
+        manuallySelectedPoints = canvasPoints
+            .withIndex()
+            .filter { it.value in rect }
+            .retrieveIndices()
+            .plus(if (isShiftPressed) manuallySelectedPoints else emptyList())
+    }
+
+    val clearSelectionAction = {
+        switchToSelectionModeAction()
+        manuallySelectedPoints = emptyList()
+    }
+
+    val splitInHalfAction = {
+        switchToSelectionModeAction()
+
+        val (ai, bi) = affectedPointsIndices
+        val (a, b) = affectedPointsIndices.map { points[it] }
+
+        disconnect(ai, bi)
+        addPoint(listOf(a, b).average()).let { i ->
+            connect(ai, i)
+            connect(bi, i)
+        }
+    }
+
     val createPointAction = { savedCursorOffset: Offset ->
-        addPoint(savedCursorOffset.toWorldXYZ().also { println("new point: $it") })
+        switchToSelectionModeAction()
+        addPoint(savedCursorOffset.toWorldXYZ())
     }
 
     val connectAction = deselectionContext {
@@ -265,15 +304,35 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
-    val toggleConnectionAction = deselectionContext {
+    val toggleConnectionAction = {
         for ((ai, bi) in affectedPointsIndices.combinationsOfPairs()) {
             toggleConnection(ai, bi)
         }
     }
 
     val removeAction = deselectionContext {
-        for (i in affectedPointsIndices) {
-            removePointAt(i)
+        for ((i, iToRemove) in affectedPointsIndices.withIndex()) {
+            val removingOffset = -affectedPointsIndices.asSequence().take(i).count { it < iToRemove }
+            removePointAt(iToRemove + removingOffset)
+        }
+
+        manuallySelectedPoints = emptyList()
+    }
+
+    val assignWorldRotation = { xy: Number, yz: Number, zx: Number ->
+        worldXYRotation = xy.toFloat()
+        worldYZRotation = yz.toFloat()
+        worldZXRotation = zx.toFloat()
+    }
+
+    val dragPointsAction = { start: Offset, end: Offset ->
+        val xyzOffset = end.toWorldXYZ() - start.toWorldXYZ()
+        points = points.mapIndexed { i, point ->
+            if (i in affectedPointsIndices) {
+                point + xyzOffset
+            } else {
+                point
+            }
         }
     }
 
@@ -282,6 +341,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val onPrimaryClick = onPrimaryClick@ {
+        switchToSelectionModeAction()
         if (isShiftPressed) {
             nearestPointIndex?.let {
                 manuallySelectedPoints += it
@@ -291,6 +351,13 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             return@onPrimaryClick
         }
         selectSinglePointAction()
+    }
+
+    cursorDragState.observeOnDragEnd { start: Offset, end: Offset ->
+        when (dragMode) {
+            DragMode.Selection -> selectAreaAction(Rect.areaOf(start, end))
+            DragMode.Drag -> dragPointsAction(start, end)
+        }
     }
 
     val transformTextToXYZ = { text: String ->
@@ -317,6 +384,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
 
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
         observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
+
+        observeKeysPressed.invoke({ it.key == Key.One }) { assignWorldRotation.invoke(0, 0, 0) }
+        observeKeysPressed.invoke({ it.key == Key.Two }) { assignWorldRotation.invoke(0, 0, PI / 2) }
+        observeKeysPressed.invoke({ it.key == Key.Three }) { assignWorldRotation.invoke(0, PI / 2, 0) }
+        observeKeysPressed.invoke({ it.key == Key.Four }) { assignWorldRotation.invoke(0, PI / 4, PI / 4) }
 
         observeKeysPressed.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
         observeKeysPressed.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
@@ -364,25 +436,30 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     MaterialTheme {
         Box(Modifier.fillMaxSize()) {
             ContextMenuArea(
-                items = { listOfNotNull(
-                    ContextMenuItem("Create Point") { createPointAction(contextMenuSavedCursorOffset) },
-                    ContextMenuItem("Remove") { removeAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
-                    ContextMenuItem("Select") { selectSinglePointAction() }.takeIf { nearestPointIndex != null },
-                    ContextMenuItem("Connect") { connectAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
-                    ContextMenuItem("Disconnect") { disconnectAction() }.takeIf { affectedPointsIndices.isNotEmpty() },
-                ) },
+                items = {
+                    contextMenuAreaItems(
+                        contextMenuSavedCursorOffset,
+                        nearestPointIndex,
+                        adjacencyMatrix,
+                        manuallySelectedPoints,
+                        affectedPointsIndices,
+                        createPointAction,
+                        removeAction,
+                        switchToDragModeAction,
+                        selectSinglePointAction,
+                        splitInHalfAction,
+                        connectAction,
+                        disconnectAction,
+                        clearSelectionAction
+                    )
+                },
                 state = contextMenuState
             ) {
                 Canvas(
                    Modifier
                         .fillMaxSize()
                         .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
-                        .onCursorActions(
-                            onMove = onMove, // onMove, // TODO moving on current plane
-                            onScroll = {}, // onScroll, // TODO scale on current plane
-                            onPrimaryClick = onPrimaryClick,
-                            onSelectArea = {}
-                        )
+                        .onCursorActions(cursorDragState, onMove, onPrimaryClick)
                 ) {
                     drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
 
@@ -395,11 +472,28 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                     }
 
                     for (index in affectedPointsIndices) {
-                        drawCircle(Color.Black, 4F, canvasPoints[index], style = Stroke(1f))
+                        val point = when (true) {
+                            (cursorDragState.dragging && dragMode == DragMode.Drag) -> canvasPoints[index] + cursorDragState.diff
+                            else -> canvasPoints[index]
+                        }
+                        drawCircle(Color.Black, 4F, point, style = Stroke(1f))
                     }
 
-                    nearestPointIndex?.let { nearestPointIndex ->
-                        drawLine(Color.Black, cursorOffset, canvasPoints[nearestPointIndex], pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f))
+                    nearestPointIndex.takeUnless { cursorDragState.dragging }?.let { nearestPointIndex ->
+                        drawLine(
+                            color = Color.Black,
+                            start = cursorOffset,
+                            end = canvasPoints[nearestPointIndex],
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+                        )
+                    }
+
+                    if (cursorDragState.dragging) when (dragMode) {
+                        DragMode.Selection -> drawSelectionArea(cursorDragState.start, cursorDragState.end)
+                        DragMode.Drag -> {
+                            val center = affectedPointsIndices.map { points[it] }.average()
+                            drawDragOffset(center, center + cursorDragState.xyzDiff(), XYZ::toCanvas)
+                        }
                     }
                 }
             }
@@ -478,6 +572,45 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 }
 
+private fun contextMenuAreaItems(
+    contextMenuSavedCursorOffset: Offset,
+    nearestPointIndex: Int?,
+    adjacencyMatrix: MutableList<MutableList<Boolean>>,
+    manuallySelectedPoints: List<Int>,
+    affectedPointsIndices: List<Int>,
+    createPointAction: (Offset) -> Int,
+    removeAction: () -> Unit,
+    switchToDragModeAction: () -> Unit,
+    selectSinglePointAction: () -> Unit,
+    splitInHalfAction: () -> Unit,
+    connectAction: () -> Unit,
+    disconnectAction: () -> Unit,
+    clearSelectionAction: () -> Unit
+) = buildList {
+    add(ContextMenuItem("Create Point") { createPointAction(contextMenuSavedCursorOffset) })
+
+    if (affectedPointsIndices.isNotEmpty()) {
+        add(ContextMenuItem("Remove", removeAction))
+        add(ContextMenuItem("Drag points", switchToDragModeAction))
+    }
+    if (nearestPointIndex != null) {
+        add(ContextMenuItem("Select", selectSinglePointAction))
+    }
+    if (
+        affectedPointsIndices.size == 2 &&
+        adjacencyMatrix[affectedPointsIndices[0]][affectedPointsIndices[1]]
+    ) {
+        add(ContextMenuItem("Split in half", splitInHalfAction))
+    }
+    if (affectedPointsIndices.size >= 2) {
+        add(ContextMenuItem("Connect", connectAction))
+        add(ContextMenuItem("Disconnect", disconnectAction))
+    }
+    if (manuallySelectedPoints.isNotEmpty()) {
+        add(ContextMenuItem("Clear selection", clearSelectionAction))
+    }
+}
+
 private fun DrawScope.drawCoordinateAxes(offset: XYZ, xYRotation: Float, yZRotation: Float, zXRotation: Float) {
     val points = listOf(
         XYZ(-1f, 0f, 0f), XYZ(1f, 0f, 0f), XYZ(0f, -1f, 0f), XYZ(0f, 1f, 0f), XYZ(0f, 0f, -1f), XYZ(0f, 0f, 1f)
@@ -495,6 +628,32 @@ private fun DrawScope.drawCoordinateAxes(offset: XYZ, xYRotation: Float, yZRotat
     drawLine(Color.Red, points[0], points[1])
     drawLine(Color.Blue, points[2], points[3])
     drawLine(Color.Green, points[4], points[5])
+}
+
+private fun DrawScope.drawSelectionArea(start: Offset, end: Offset) {
+    val topLeft = Offset(min(start.x, end.x), min(start.y, end.y))
+    val bottomRight = Offset(max(start.x, end.x), max(start.y, end.y))
+    val size = (bottomRight - topLeft).run { Size(x, y) }
+
+    drawCircle(Color.Black, 4f, start, 0.4f)
+    drawCircle(Color.Black, 4f, end, 0.4f)
+
+    drawRect(Color.Black, topLeft, size, 0.4f, Stroke(1f))
+}
+
+private fun DrawScope.drawDragOffset(start: XYZ, end: XYZ, convertToOffset: XYZ.() -> Offset) {
+    val diff = end - start
+
+    val startOffset = start.convertToOffset()
+    val endOffset = end.convertToOffset()
+    val xShiftEnd = (start + XYZ.ZERO.copy(x = diff.x)).convertToOffset()
+    val yShiftEnd = (start + XYZ.ZERO.copy(y = diff.y)).convertToOffset()
+    val zShiftEnd = (start + XYZ.ZERO.copy(z = diff.z)).convertToOffset()
+
+    drawArrow(Color.Black, startOffset, endOffset)
+    drawArrow(Color.Red, startOffset, xShiftEnd)
+    drawArrow(Color.Blue, startOffset, yShiftEnd)
+    drawArrow(Color.Green, startOffset, zShiftEnd)
 }
 
 private operator fun <T> Function0<T>.getValue(thisObj: Any?, property: KProperty<*>): T = invoke()
@@ -526,6 +685,10 @@ private fun Info(visible: Boolean, close: () -> Unit) {
                 Q, E – rotate left, rotate right compass-like on XY
                 Z, X – rotate left, rotate right compass-like on YZ
                 C, V – rotate left, rotate right compass-like on ZY
+
+                1 – view XY face
+                2 – view YZ face
+                3 – view ZX face
             """.trimIndent())
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = close) {

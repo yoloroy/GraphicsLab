@@ -43,6 +43,10 @@ value class XYZ(private val list: List<Float>) {
 
     operator fun times(other: XYZ) = XYZ((toMatrix() * other.toOtherMatrix()).map { it[0] })
 
+    operator fun times(factor: Float) = XYZ(x * factor, y * factor, z * factor)
+
+    operator fun div(factor: Float) = times(1 / factor)
+
     infix fun scaled(other: XYZ) = this * other
 
     infix fun unscaled(other: XYZ) = this * XYZ(other.list.map { 1 / it })
@@ -58,6 +62,10 @@ value class XYZ(private val list: List<Float>) {
     fun copy(x: Float = this.x, y: Float = this.y, z: Float = this.z) = XYZ(x, y, z)
 }
 
+fun List<XYZ>.sum() = reduce(XYZ::plus)
+
+fun List<XYZ>.average() = sum() / size.toFloat()
+
 fun Offset.toWorldXYZ(
     worldOffset: XYZ,
     worldScale: XYZ,
@@ -65,8 +73,8 @@ fun Offset.toWorldXYZ(
     worldYZRotation: Float,
     worldZXRotation: Float
 ) = XYZ.fromOffset(this)
-    .unscaled(worldScale)
     .offset(worldOffset * XYZ(-1f, -1f, 1f))
+    .unscaled(worldScale)
     .`🔄Y`(-worldZXRotation)
     .`🔄X`(-worldYZRotation)
     .`🔄Z`(-worldXYRotation)
