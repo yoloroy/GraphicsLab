@@ -31,6 +31,8 @@ value class XYZ(private val list: List<Float>) {
 
     fun toOffset() = Offset(x, y)
 
+    fun toSpaceDelimitedString() = "$x $y $z"
+
     private fun toMatrix() = list.map { listOf(it) } // matrix of size 4 with one column
 
     private fun toOtherMatrix() = listOf(list) // matrix with one row of size 4

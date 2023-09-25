@@ -27,16 +27,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import state_holders.rememberWorldAssignees
+import state_holders.rememberWorld
 import util.*
-import java.lang.Math.toDegrees
 import java.lang.Math.toRadians
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.reflect.KProperty
 
 const val IS_TRANSPARENT_BUILD = false
-const val TWO_PI = 2 * PI
 
 @Serializable
 data class SaveState(
@@ -134,31 +133,23 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     // endregion
 
     // region world
-    var worldOffset by remember { mutableStateOf(XYZ.ZERO) }
-    var worldScale by remember { mutableStateOf(XYZ.ONE) }
-    var worldXYRotation by remember { mutableStateOf(0F) }
-    var worldYZRotation by remember { mutableStateOf(0F) }
-    var worldZXRotation by remember { mutableStateOf(0F) }
-    var retrievingWorldOffset by remember { mutableStateOf(false) }
-    var retrievingWorldScale by remember { mutableStateOf(false) }
-    var retrievingWorldXYRotation by remember { mutableStateOf(false) }
-    var retrievingWorldYZRotation by remember { mutableStateOf(false) }
-    var retrievingWorldZXRotation by remember { mutableStateOf(false) }
+    val world = rememberWorld()
+    val worldAssignees = rememberWorldAssignees(world)
 
-    fun XYZ.toCanvas() = scaled(worldScale).`🔄Z`(worldXYRotation).`🔄X`(worldYZRotation).`🔄Y`(worldZXRotation).offset(worldOffset).toOffset()
+    fun XYZ.toCanvas() = scaled(world.scale).`🔄Z`(world.xyRadians).`🔄X`(world.yzRadians).`🔄Y`(world.zxRadians).offset(world.offset).toOffset()
 
     val canvasPoints by remember { derivedStateOf { points.map { it.toCanvas() } } }
 
-    fun `🔄Z`(deltaRadians: Float) { worldXYRotation += deltaRadians }
-    fun `🔄X`(deltaRadians: Float) { worldYZRotation += deltaRadians }
-    fun `🔄Y`(deltaRadians: Float) { worldZXRotation += deltaRadians }
+    fun `🔄Z`(deltaRadians: Float) { world.xyRadians += deltaRadians }
+    fun `🔄X`(deltaRadians: Float) { world.yzRadians += deltaRadians }
+    fun `🔄Y`(deltaRadians: Float) { world.zxRadians += deltaRadians }
 
-    fun Offset.toWorldXYZ() = toWorldXYZ(worldOffset, worldScale, worldXYRotation, worldYZRotation, worldZXRotation)
+    fun Offset.toWorldXYZ() = toWorldXYZ(world.offset, world.scale, world.xyRadians, world.yzRadians, world.zxRadians)
 
-    LaunchedEffect(worldScale) {
-        if (worldScale.x > 0F && worldScale.y > 0F) return@LaunchedEffect
+    LaunchedEffect(world.scale) {
+        if (world.scale.x > 0F && world.scale.y > 0F) return@LaunchedEffect
 
-        worldScale = XYZ(0.01F, 0.01F, 0.01F)
+        world.scale = XYZ(0.01F, 0.01F, 0.01F)
         failures += Failure.Mistake("World scale should be positive")
     }
     // endregion
@@ -320,9 +311,9 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     }
 
     val assignWorldRotation = { xy: Number, yz: Number, zx: Number ->
-        worldXYRotation = xy.toFloat()
-        worldYZRotation = yz.toFloat()
-        worldZXRotation = zx.toFloat()
+        world.xyRadians = xy.toFloat()
+        world.yzRadians = yz.toFloat()
+        world.zxRadians = zx.toFloat()
     }
 
     val dragPointsAction = { start: Offset, end: Offset ->
@@ -360,21 +351,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
     }
 
-    val transformTextToXYZ = { text: String ->
-        try {
-            text.trim().split(" ")
-                .map { it.toFloat() }
-                .let { XYZ(it[0], it[1], it[2]) }
-        } catch (e: NumberFormatException) {
-            null
-        } catch (e: IndexOutOfBoundsException) {
-            null
-        } catch (e: Exception) {
-            failures += Failure.UncaughtException(e.message ?: e::class.toString())
-            worldOffset
-        }
-    }
-
     LaunchedEffect(Unit) {
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.C }) { copyAction.invoke() }
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.V }) { pasteAction.invoke() }
@@ -385,22 +361,23 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
         observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
 
+        // region world config
         observeKeysPressed.invoke({ it.key == Key.One }) { assignWorldRotation.invoke(0, 0, 0) }
         observeKeysPressed.invoke({ it.key == Key.Two }) { assignWorldRotation.invoke(0, 0, PI / 2) }
         observeKeysPressed.invoke({ it.key == Key.Three }) { assignWorldRotation.invoke(0, PI / 2, 0) }
         observeKeysPressed.invoke({ it.key == Key.Four }) { assignWorldRotation.invoke(0, PI / 4, PI / 4) }
 
-        observeKeysPressed.invoke({ it.key == Key.W }) { worldOffset = worldOffset.copy(y = worldOffset.y - 4) }
-        observeKeysPressed.invoke({ it.key == Key.A }) { worldOffset = worldOffset.copy(x = worldOffset.x - 4) }
-        observeKeysPressed.invoke({ it.key == Key.S }) { worldOffset = worldOffset.copy(y = worldOffset.y + 4) }
-        observeKeysPressed.invoke({ it.key == Key.D }) { worldOffset = worldOffset.copy(x = worldOffset.x + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { worldOffset = worldOffset.copy(z = worldOffset.z + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { worldOffset = worldOffset.copy(z = worldOffset.z - 4) }
+        observeKeysPressed.invoke({ it.key == Key.W }) { world.offset = world.offset.copy(y = world.offset.y - 4) }
+        observeKeysPressed.invoke({ it.key == Key.A }) { world.offset = world.offset.copy(x = world.offset.x - 4) }
+        observeKeysPressed.invoke({ it.key == Key.S }) { world.offset = world.offset.copy(y = world.offset.y + 4) }
+        observeKeysPressed.invoke({ it.key == Key.D }) { world.offset = world.offset.copy(x = world.offset.x + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { world.offset = world.offset.copy(z = world.offset.z + 4) }
+        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { world.offset = world.offset.copy(z = world.offset.z - 4) }
 
-        observeKeysPressed.invoke({ it.key == Key.R }) { worldScale = worldScale.copy(x = worldScale.x * 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.T }) { worldScale = worldScale.copy(x = worldScale.x / 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.F }) { worldScale = worldScale.copy(y = worldScale.y * 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.G }) { worldScale = worldScale.copy(y = worldScale.y / 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.R }) { world.scale = world.scale.copy(x = world.scale.x * 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.T }) { world.scale = world.scale.copy(x = world.scale.x / 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.F }) { world.scale = world.scale.copy(y = world.scale.y * 0.99F) }
+        observeKeysPressed.invoke({ it.key == Key.G }) { world.scale = world.scale.copy(y = world.scale.y / 0.99F) }
 
         observeKeysPressed.invoke({ it.key == Key.Q }) { `🔄Z`(-toRadians(5.0).toFloat()) }
         observeKeysPressed.invoke({ it.key == Key.E }) { `🔄Z`(+toRadians(5.0).toFloat()) }
@@ -408,6 +385,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeysPressed.invoke({ it.key == Key.X }) { `🔄X`(+toRadians(5.0).toFloat()) }
         observeKeysPressed.invoke({ it.key == Key.C }) { `🔄Y`(-toRadians(5.0).toFloat()) }
         observeKeysPressed.invoke({ it.key == Key.V }) { `🔄Y`(+toRadians(5.0).toFloat()) }
+        // endregion
 
         observeKeysPressed.invoke({ it.key == Key.I }) { isInfoOpen = !isInfoOpen }
     }
@@ -421,11 +399,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         }
 
         Menu(text = "Assign") {
-            Item(text = "World offset", onClick = { retrievingWorldOffset = true })
-            Item(text = "World scale", onClick = { retrievingWorldScale = true })
-            Item(text = "World XY rotation", onClick = { retrievingWorldXYRotation = true })
-            Item(text = "World YZ rotation", onClick = { retrievingWorldYZRotation = true })
-            Item(text = "World ZX rotation", onClick = { retrievingWorldZXRotation = true })
+            worldAssignees.menuBarItems()
         }
 
         Menu(text = "Help") {
@@ -461,7 +435,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
                         .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
                         .onCursorActions(cursorDragState, onMove, onPrimaryClick)
                 ) {
-                    drawCoordinateAxes(worldOffset, worldXYRotation, worldYZRotation, worldZXRotation)
+                    drawCoordinateAxes(world.offset, world.xyRadians, world.yzRadians, world.zxRadians)
 
                     for ((ai, bi) in connections) {
                         drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
@@ -501,74 +475,8 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
             FailuresLog(failures, Modifier.align(Alignment.BottomEnd).width(300.dp))
         }
 
-        // region dialogs
         Info(isInfoOpen) { isInfoOpen = false }
-        ValueRetrieverDialog(
-            startValue = worldOffset.let { "${it.x} ${it.y} ${it.z}" },
-            visible = retrievingWorldOffset,
-            title = "World Offset (three numbers separated by space)",
-            transform = transformTextToXYZ,
-            setValueAndCloseDialog = {
-                worldOffset = it
-                retrievingWorldOffset = false
-            },
-            close = {
-                retrievingWorldOffset = false
-            }
-        )
-        ValueRetrieverDialog(
-            startValue = worldScale.let { "${it.x} ${it.y} ${it.z}" },
-            visible = retrievingWorldScale,
-            title = "World Scale (three numbers separated by space)",
-            transform = transformTextToXYZ,
-            setValueAndCloseDialog = {
-                worldScale = it
-                retrievingWorldScale = false
-            },
-            close = {
-                retrievingWorldScale = false
-            }
-        )
-        ValueRetrieverDialog(
-            startValue = toDegrees(worldXYRotation.toDouble() % TWO_PI).toString(),
-            visible = retrievingWorldXYRotation,
-            title = "World Rotation in XY (in degrees)",
-            transform = { it.toDoubleOrNull()?.let { it % 360 } },
-            setValueAndCloseDialog = {
-                worldXYRotation = toRadians(it).toFloat()
-                retrievingWorldXYRotation = false
-            },
-            close = {
-                retrievingWorldXYRotation = false
-            }
-        )
-        ValueRetrieverDialog(
-            startValue = toDegrees(worldYZRotation.toDouble() % TWO_PI).toString(),
-            visible = retrievingWorldYZRotation,
-            title = "World Rotation in YZ (in degrees)",
-            transform = { it.toDoubleOrNull()?.let { it % 360 } },
-            setValueAndCloseDialog = {
-                worldYZRotation = toRadians(it).toFloat()
-                retrievingWorldYZRotation = false
-            },
-            close = {
-                retrievingWorldYZRotation = false
-            }
-        )
-        ValueRetrieverDialog(
-            startValue = toDegrees(worldZXRotation.toDouble() % TWO_PI).toString(),
-            visible = retrievingWorldZXRotation,
-            title = "World Rotation in ZX (in degrees)",
-            transform = { it.toDoubleOrNull()?.let { it % 360 } },
-            setValueAndCloseDialog = {
-                worldZXRotation = toRadians(it).toFloat()
-                retrievingWorldZXRotation = false
-            },
-            close = {
-                retrievingWorldZXRotation = false
-            }
-        )
-        // endregion
+        worldAssignees.dialogs()
     }
 }
 
@@ -655,8 +563,6 @@ private fun DrawScope.drawDragOffset(start: XYZ, end: XYZ, convertToOffset: XYZ.
     drawArrow(Color.Blue, startOffset, yShiftEnd)
     drawArrow(Color.Green, startOffset, zShiftEnd)
 }
-
-private operator fun <T> Function0<T>.getValue(thisObj: Any?, property: KProperty<*>): T = invoke()
 
 @Composable
 private fun Info(visible: Boolean, close: () -> Unit) {
