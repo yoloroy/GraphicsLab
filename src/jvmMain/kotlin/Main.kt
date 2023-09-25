@@ -27,11 +27,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import state_holders.rememberWorldAssignees
-import state_holders.rememberWorld
 import util.*
 import java.lang.Math.toRadians
-import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 
@@ -54,7 +51,12 @@ enum class DragMode {
 context(FrameWindowScope)
 @Composable
 @Preview
-fun App(keysGlobalFlow: Flow<KeyEvent>) {
+fun App(
+    world: World,
+    worldAssignees: WorldAssignees,
+    worldInputTarget: WorldInputTarget,
+    keysGlobalFlow: Flow<KeyEvent>
+) {
     val coroutineScope = rememberCoroutineScope()
 
     var keysFlow by remember(keysGlobalFlow) { mutableStateOf(keysGlobalFlow) }
@@ -133,25 +135,11 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
     // endregion
 
     // region world
-    val world = rememberWorld()
-    val worldAssignees = rememberWorldAssignees(world)
-
     fun XYZ.toCanvas() = scaled(world.scale).`🔄Z`(world.xyRadians).`🔄X`(world.yzRadians).`🔄Y`(world.zxRadians).offset(world.offset).toOffset()
 
     val canvasPoints by remember { derivedStateOf { points.map { it.toCanvas() } } }
 
-    fun `🔄Z`(deltaRadians: Float) { world.xyRadians += deltaRadians }
-    fun `🔄X`(deltaRadians: Float) { world.yzRadians += deltaRadians }
-    fun `🔄Y`(deltaRadians: Float) { world.zxRadians += deltaRadians }
-
     fun Offset.toWorldXYZ() = toWorldXYZ(world.offset, world.scale, world.xyRadians, world.yzRadians, world.zxRadians)
-
-    LaunchedEffect(world.scale) {
-        if (world.scale.x > 0F && world.scale.y > 0F) return@LaunchedEffect
-
-        world.scale = XYZ(0.01F, 0.01F, 0.01F)
-        failures += Failure.Mistake("World scale should be positive")
-    }
     // endregion
 
     // region Cursor
@@ -310,12 +298,6 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         manuallySelectedPoints = emptyList()
     }
 
-    val assignWorldRotation = { xy: Number, yz: Number, zx: Number ->
-        world.xyRadians = xy.toFloat()
-        world.yzRadians = yz.toFloat()
-        world.zxRadians = zx.toFloat()
-    }
-
     val dragPointsAction = { start: Offset, end: Offset ->
         val xyzOffset = end.toWorldXYZ() - start.toWorldXYZ()
         points = points.mapIndexed { i, point ->
@@ -361,31 +343,7 @@ fun App(keysGlobalFlow: Flow<KeyEvent>) {
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
         observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
 
-        // region world config
-        observeKeysPressed.invoke({ it.key == Key.One }) { assignWorldRotation.invoke(0, 0, 0) }
-        observeKeysPressed.invoke({ it.key == Key.Two }) { assignWorldRotation.invoke(0, 0, PI / 2) }
-        observeKeysPressed.invoke({ it.key == Key.Three }) { assignWorldRotation.invoke(0, PI / 2, 0) }
-        observeKeysPressed.invoke({ it.key == Key.Four }) { assignWorldRotation.invoke(0, PI / 4, PI / 4) }
-
-        observeKeysPressed.invoke({ it.key == Key.W }) { world.offset = world.offset.copy(y = world.offset.y - 4) }
-        observeKeysPressed.invoke({ it.key == Key.A }) { world.offset = world.offset.copy(x = world.offset.x - 4) }
-        observeKeysPressed.invoke({ it.key == Key.S }) { world.offset = world.offset.copy(y = world.offset.y + 4) }
-        observeKeysPressed.invoke({ it.key == Key.D }) { world.offset = world.offset.copy(x = world.offset.x + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionUp }) { world.offset = world.offset.copy(z = world.offset.z + 4) }
-        observeKeysPressed.invoke({ it.key == Key.DirectionDown }) { world.offset = world.offset.copy(z = world.offset.z - 4) }
-
-        observeKeysPressed.invoke({ it.key == Key.R }) { world.scale = world.scale.copy(x = world.scale.x * 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.T }) { world.scale = world.scale.copy(x = world.scale.x / 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.F }) { world.scale = world.scale.copy(y = world.scale.y * 0.99F) }
-        observeKeysPressed.invoke({ it.key == Key.G }) { world.scale = world.scale.copy(y = world.scale.y / 0.99F) }
-
-        observeKeysPressed.invoke({ it.key == Key.Q }) { `🔄Z`(-toRadians(5.0).toFloat()) }
-        observeKeysPressed.invoke({ it.key == Key.E }) { `🔄Z`(+toRadians(5.0).toFloat()) }
-        observeKeysPressed.invoke({ it.key == Key.Z }) { `🔄X`(-toRadians(5.0).toFloat()) }
-        observeKeysPressed.invoke({ it.key == Key.X }) { `🔄X`(+toRadians(5.0).toFloat()) }
-        observeKeysPressed.invoke({ it.key == Key.C }) { `🔄Y`(-toRadians(5.0).toFloat()) }
-        observeKeysPressed.invoke({ it.key == Key.V }) { `🔄Y`(+toRadians(5.0).toFloat()) }
-        // endregion
+        worldInputTarget.integrateIntoKeysFlow { predicate, action -> observeKeysPressed(predicate, action) }
 
         observeKeysPressed.invoke({ it.key == Key.I }) { isInfoOpen = !isInfoOpen }
     }
@@ -613,6 +571,9 @@ fun main() = application {
     // Suggestion: replace `keysFlow` with observers which will come from children composables
     // and will have type (KeyEvent) -> Boolean, which will allow usage of Boolean response in KeyEvent handling
     val keysFlow = remember { MutableSharedFlow<KeyEvent>() }
+    val world = remember { ComposableWorld() }
+    val worldAssignees = rememberWorldAssignees(world)
+    val worldInputTarget = remember { WorldInputTarget(world, 10f, 0.01f, toRadians(5.0).toFloat()) }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -620,6 +581,6 @@ fun main() = application {
         undecorated = IS_TRANSPARENT_BUILD,
         transparent = IS_TRANSPARENT_BUILD
     ) {
-        App(keysFlow)
+        App(world, worldAssignees, worldInputTarget, keysFlow)
     }
 }

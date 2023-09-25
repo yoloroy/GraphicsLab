@@ -1,6 +1,3 @@
-package state_holders
-
-import XYZ
 import androidx.compose.runtime.*
 import androidx.compose.ui.window.MenuScope
 import components.Assignee
@@ -9,15 +6,36 @@ import util.forFloat
 import util.forXYZ
 import java.lang.Math.toDegrees
 
-class World {
-    var offset by mutableStateOf(XYZ.ZERO)
-    var scale by mutableStateOf(XYZ.ONE)
-    var xyRadians by mutableStateOf(0F)
-    var yzRadians by mutableStateOf(0F)
-    var zxRadians by mutableStateOf(0F)
+interface World {
+    val offset: XYZ
+    val scale: XYZ
+    val xyRadians: Float
+    val yzRadians: Float
+    val zxRadians: Float
 }
 
-class WorldAssignees(private val world: World) {
+class ComposableWorld: World {
+
+    private var scaleState by mutableStateOf(XYZ.ONE)
+
+    override var offset by mutableStateOf(XYZ.ZERO)
+
+    override var scale
+        get() = scaleState
+        set(value) {
+            scaleState = value
+                .takeIf { scale.x > 0F && scale.y > 0F && scale.z > 0F }
+                ?: XYZ(0.01F, 0.01F, 0.01F)
+        }
+
+    override var xyRadians by mutableStateOf(0F)
+
+    override var yzRadians by mutableStateOf(0F)
+
+    override var zxRadians by mutableStateOf(0F)
+}
+
+class WorldAssignees(private val world: ComposableWorld) {
     private val offsetAssignee = Assignee.forXYZ(
         "World Offset (three numbers separated by space)",
         { world.offset = it },
@@ -65,11 +83,6 @@ class WorldAssignees(private val world: World) {
 }
 
 @Composable
-fun rememberWorld() = remember { World() }
-
-@Composable
-fun rememberWorldAssignees(world: World) = remember(world.key) {
-    WorldAssignees(world)
-}
+fun rememberWorldAssignees(world: ComposableWorld) = remember(world.key) { WorldAssignees(world) }
 
 private val World.key get() = listOf(offset, scale, xyRadians, yzRadians, zxRadians).hashCode()
