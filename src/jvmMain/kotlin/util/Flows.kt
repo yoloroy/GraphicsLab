@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.launch
 
-fun <T> MutableSharedFlow<T>.emitter(coroutineScope: CoroutineScope): (T) -> Unit = { value: T ->
+fun <T> MutableSharedFlow<T>.createEmmitterIn(coroutineScope: CoroutineScope): (T) -> Unit = { value: T ->
     coroutineScope.launch {
         emit(value)
     }

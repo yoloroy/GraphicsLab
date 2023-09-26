@@ -1,6 +1,7 @@
 import androidx.compose.runtime.*
 import androidx.compose.ui.window.MenuScope
 import components.Assignee
+import components.Failures
 import util.TWO_PI
 import util.forFloat
 import util.forXYZ
@@ -14,7 +15,7 @@ interface World {
     val zxRadians: Float
 }
 
-class ComposableWorld: World {
+class ComposableWorld(private val failures: Failures): World {
 
     private var scaleState by mutableStateOf(XYZ.ONE)
 
@@ -23,9 +24,12 @@ class ComposableWorld: World {
     override var scale
         get() = scaleState
         set(value) {
-            scaleState = value
-                .takeIf { scale.x > 0F && scale.y > 0F && scale.z > 0F }
-                ?: XYZ(0.01F, 0.01F, 0.01F)
+            scaleState = if (value.x > 0F && value.y > 0F && value.z > 0F) {
+                value
+            } else {
+                failures.logMistake("World scale should be > 0")
+                XYZ(0.01F, 0.01F, 0.01F)
+            }
         }
 
     override var xyRadians by mutableStateOf(0F)
