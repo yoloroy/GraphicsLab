@@ -1,5 +1,7 @@
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.window.MenuScope
 import components.Assignee
 import components.Failures
@@ -14,6 +16,9 @@ interface World {
     val xyRadians: Float
     val yzRadians: Float
     val zxRadians: Float
+
+    context(DrawScope)
+    fun drawCoordinateAxes()
 }
 
 class ComposableWorld(private val failures: Failures): World {
@@ -38,6 +43,25 @@ class ComposableWorld(private val failures: Failures): World {
     override var yzRadians by mutableStateOf(0F)
 
     override var zxRadians by mutableStateOf(0F)
+
+    context(DrawScope)
+    override fun drawCoordinateAxes() {
+        val points = listOf(
+            XYZ(-1f, 0f, 0f), XYZ(1f, 0f, 0f), XYZ(0f, -1f, 0f), XYZ(0f, 1f, 0f), XYZ(0f, 0f, -1f), XYZ(0f, 0f, 1f)
+        ).map { it
+            .`🔄Z`(xyRadians)
+            .`🔄X`(yzRadians)
+            .`🔄Y`(zxRadians)
+            .scaled(XYZ(size.width, size.height))
+            .scaled(XYZ(10F, 10F))
+            .offset(offset)
+            .toOffset()
+        }
+
+        drawLine(Color.Red, points[0], points[1])
+        drawLine(Color.Blue, points[2], points[3])
+        drawLine(Color.Green, points[4], points[5])
+    }
 }
 
 class WorldAssignees(private val world: ComposableWorld) {

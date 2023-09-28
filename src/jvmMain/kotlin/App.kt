@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
@@ -17,7 +16,7 @@ import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
 import components.*
 import kotlinx.coroutines.flow.Flow
-import util.*
+import util.isWinCtrlPressed
 
 context(FrameWindowScope)
 @Composable
@@ -159,7 +158,7 @@ fun App(
                         .background(if (IS_TRANSPARENT_BUILD) Color(0x44ffffff) else Color.White)
                         .handleCursorInput(cursorInput)
                 ) { // TODO move draw action into separate class, this will move part of parameters away from this function
-                    drawCoordinateAxes(world.offset, world.xyRadians, world.yzRadians, world.zxRadians)
+                    world.drawCoordinateAxes()
 
                     for ((ai, bi) in points.connections) {
                         drawLine(Color.Black, canvasPoints[ai], canvasPoints[bi])
@@ -225,25 +224,6 @@ private fun contextMenuAreaItems(
     if (manuallySelectedPoints.isNotEmpty()) {
         add(ContextMenuItem("Clear selection", clearSelectionAction))
     }
-}
-
-private fun DrawScope.drawCoordinateAxes(offset: XYZ, xYRotation: Float, yZRotation: Float, zXRotation: Float) {
-    val points = listOf(
-        XYZ(-1f, 0f, 0f), XYZ(1f, 0f, 0f), XYZ(0f, -1f, 0f), XYZ(0f, 1f, 0f), XYZ(0f, 0f, -1f), XYZ(0f, 0f, 1f)
-    ).map {
-        (it
-            `🔄Z` xYRotation
-            `🔄X` yZRotation
-            `🔄Y` zXRotation
-            scaled XYZ(size.width, size.height)
-            scaled XYZ(10F, 10F)
-            offset offset
-        ).toOffset()
-    }
-
-    drawLine(Color.Red, points[0], points[1])
-    drawLine(Color.Blue, points[2], points[3])
-    drawLine(Color.Green, points[4], points[5])
 }
 
 private operator fun Offset.times(other: Offset) = Offset(x * other.x, y * other.y)
