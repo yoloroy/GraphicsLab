@@ -1,4 +1,5 @@
 import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.window.MenuScope
 import components.Assignee
 import components.Failures
@@ -90,3 +91,18 @@ class WorldAssignees(private val world: ComposableWorld) {
 fun rememberWorldAssignees(world: ComposableWorld) = remember(world.key) { WorldAssignees(world) }
 
 private val World.key get() = listOf(offset, scale, xyRadians, yzRadians, zxRadians).hashCode()
+
+fun Offset.toWorldXYZ(world: World) = XYZ.fromOffset(this)
+    .offset(world.offset * XYZ(-1f, -1f, 1f))
+    .unscaled(world.scale)
+    .`🔄Y`(-world.zxRadians)
+    .`🔄X`(-world.yzRadians)
+    .`🔄Z`(-world.xyRadians)
+
+fun XYZ.toCanvas(world: World) = this
+    .scaled(world.scale)
+    .`🔄Z`(world.xyRadians)
+    .`🔄X`(world.yzRadians)
+    .`🔄Y`(world.zxRadians)
+    .offset(world.offset)
+    .toOffset()
