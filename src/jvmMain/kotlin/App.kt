@@ -64,39 +64,14 @@ fun App(
         cursorInput.mode = cursorInput.Selection()
     }
 
-    fun deselectionContext(block: () -> Unit) = ({
-        switchToSelectionModeAction()
-        block()
-        selection.clear()
-    })
-
     val selectAllAction = {
         selection.select(*points.points.indices.toList().toIntArray())
-    }
-
-    val clearSelectionAction = {
-        switchToSelectionModeAction()
-        selection.clear()
-    }
-
-    val splitInHalfAction = {
-        switchToSelectionModeAction()
-        val (ai, bi) = selection.selected
-        points.splitInHalf(ai, bi)
     }
 
     val createPointAction = { savedCursorOffset: Offset ->
         switchToSelectionModeAction()
         points.append(savedCursorOffset.toWorldXYZ())
     }
-
-    val connectAction = deselectionContext { selection.connect() }
-
-    val disconnectAction = deselectionContext { selection.disconnect() }
-
-    val toggleConnectionAction = { selection.toggleConnection() }
-
-    val removeAction = deselectionContext { selection.remove() }
 
     LaunchedEffect(Unit) {
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.C }) { pointsCopyPasteTarget.copy() }
@@ -105,10 +80,10 @@ fun App(
         observeKeys.invoke({ it.key in listOf(Key.ShiftLeft, Key.ShiftRight) }) {
             isShiftPressed = it.type == KeyEventType.KeyDown
         }
-        observeKeysPressed.invoke({ it.key == Key.Backspace }) { removeAction.invoke() }
+        observeKeysPressed.invoke({ it.key == Key.Backspace }) { selection.remove() }
 
         observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAllAction.invoke() }
-        observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnectionAction.invoke() }
+        observeKeysPressed.invoke({ it.key == Key.Spacebar }) { selection.toggleConnection() }
 
         worldInputTarget.integrateIntoKeysFlow { predicate, action -> observeKeysPressed(predicate, action) }
 
@@ -142,12 +117,12 @@ fun App(
                         selection.manuallySelected,
                         selection.selected,
                         createPointAction,
-                        removeAction,
+                        selection::remove,
                         switchToDragModeAction,
-                        splitInHalfAction,
-                        connectAction,
-                        disconnectAction,
-                        clearSelectionAction
+                        selection::splitInHalf,
+                        selection::connect,
+                        selection::disconnect,
+                        selection::clear
                     )
                 },
                 state = contextMenuState

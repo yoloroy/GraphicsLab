@@ -1,6 +1,7 @@
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import components.CursorInput
 
 interface PointsSelection {
 
@@ -23,6 +24,8 @@ interface PointsSelection {
     fun disconnect()
 
     fun toggleConnection()
+
+    fun splitInHalf()
 }
 
 interface PointsSelectionAwareOfNearestPoint: PointsSelection {
@@ -61,6 +64,11 @@ class ComposablePointsSelection(private val points: Points): PointsSelection {
     override fun disconnect() = points.disconnectAll(selected)
 
     override fun toggleConnection() = points.toggleConnections(selected)
+
+    override fun splitInHalf() {
+        require(selected.size == 2)
+        points.splitInHalf(selected[0], selected[1])
+    }
 }
 
 class ComposablePointsSelectionAwareOfNearestPoint(
@@ -88,6 +96,68 @@ class ComposablePointsSelectionAwareOfNearestPoint(
     override fun disconnect() = manualSelection.disconnect()
 
     override fun toggleConnection() = manualSelection.toggleConnection()
+
+    override fun splitInHalf() = manualSelection.splitInHalf()
+}
+
+class PointsSelectionFeaturingDeselection(
+    private val base: PointsSelectionAwareOfNearestPoint
+): PointsSelectionAwareOfNearestPoint by base {
+
+    override fun remove() {
+        base.remove()
+        clear()
+    }
+
+    override fun disconnect() {
+        base.disconnect()
+        clear()
+    }
+
+    override fun connect() {
+        base.connect()
+        clear()
+    }
+}
+
+class PointsSelectionFeaturingSwitchingCursorInputModeToSelection(
+    private val base: PointsSelectionAwareOfNearestPoint,
+    private val cursorInput: CursorInput
+): PointsSelectionAwareOfNearestPoint by base {
+
+    override fun clear() {
+        base.clear()
+        switchModeToSelection()
+    }
+
+    override fun connect() {
+        base.connect()
+        switchModeToSelection()
+    }
+
+    override fun disconnect() {
+        base.disconnect()
+        switchModeToSelection()
+    }
+
+    override fun toggleConnection() {
+        base.toggleConnection()
+        switchModeToSelection()
+    }
+
+    override fun remove() {
+        base.remove()
+        switchModeToSelection()
+    }
+
+    override fun splitInHalf() {
+        base.splitInHalf()
+        switchModeToSelection()
+    }
+
+    private fun switchModeToSelection() {
+        cursorInput.mode = cursorInput.Selection()
+    }
 }
 
 fun PointsSelection.isNotEmpty() = selected.isNotEmpty()

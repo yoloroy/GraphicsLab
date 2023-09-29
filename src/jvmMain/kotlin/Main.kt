@@ -47,6 +47,15 @@ fun main() = application {
     val cursorDragState = remember { CursorDragState() }
     val cursorInput = remember { CursorInput(cursor, pointsSelection, { isShiftPressed }, nearestPoint, canvasPoints, points, world, cursorDragState) }
 
+    val fullPointsSelection by remember {
+        derivedStateOf {
+            PointsSelectionFeaturingSwitchingCursorInputModeToSelection(
+                PointsSelectionFeaturingDeselection(pointsSelection),
+                cursorInput
+            )
+        }
+    }
+
     Window(
         onCloseRequest = ::exitApplication,
         onKeyEvent = keysFlow.createEmmitterIn(coroutineScope).returning(false),
@@ -65,7 +74,7 @@ fun main() = application {
             worldAssignees,
             worldInputTarget,
             points,
-            pointsSelection,
+            fullPointsSelection,
             pointsCopyPasteTarget,
             keysFlow,
             observeKeys,
