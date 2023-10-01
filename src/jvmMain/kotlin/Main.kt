@@ -3,9 +3,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import components.ComposableFailures
-import components.CursorDragState
-import components.CursorInput
+import components.*
 import kotlinx.coroutines.flow.*
 import util.createEmmitterIn
 import util.partition
@@ -34,19 +32,23 @@ fun main() = application {
             .launchIn(coroutineScope)
         Unit
     }
+    val observeKeysPressed = { predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit ->
+        observeKeys({ it.type == KeyEventType.KeyDown && predicate(it) }, action)
+    }
 
     val failures = remember { ComposableFailures() }
     val world = remember { ComposableWorld(failures) }
     val worldAssignees = rememberWorldAssignees(world)
-    val worldInputTarget = remember { WorldInputTarget(world, 10f, 0.01f, toRadians(5.0).toFloat()) }
+    val worldInputTarget = remember { WorldInputTargetImpl(world, 10f, 0.01f, toRadians(5.0).toFloat()) }
     val points = remember { ComposablePoints(failures) }
     val manualPointsSelection = remember { ComposablePointsSelection(points) }
-    val canvasPoints = remember { CanvasPoints(points, world) }
+    val canvasPoints = remember { ComposableCanvasPoints(points, world) }
     val nearestPoint by remember { mutableStateOf(ComposableNearestPoint(canvasPoints, cursor, manualPointsSelection, failures)) }
     val pointsSelection = remember { ComposablePointsSelectionAwareOfNearestPoint(nearestPoint, manualPointsSelection) }
     val cursorDragState = remember { CursorDragState() }
     val cursorInput = remember { CursorInput(cursor, pointsSelection, { isShiftPressed }, nearestPoint, canvasPoints, points, world, cursorDragState) }
 
+    val cursorXYZ = remember { ComposableCursorXYZ(cursor, world) }
     val fullPointsSelection by remember {
         derivedStateOf {
             PointsSelectionFeaturingSwitchingCursorInputModeToSelection(
@@ -55,6 +57,9 @@ fun main() = application {
             )
         }
     }
+    val pointsCanvas = remember { ComposablePointsCanvas(IS_TRANSPARENT_BUILD, world, cursorInput, canvasPoints, fullPointsSelection, nearestPoint) }
+    val canvasContextMenu = remember { ComposableCanvasContextMenu(fullPointsSelection, cursorInput, cursorXYZ, points) }
+    val info = remember { ComposableInfo() }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -63,24 +68,25 @@ fun main() = application {
         transparent = IS_TRANSPARENT_BUILD
     ) {
         val clipboardManager = LocalClipboardManager.current
-        val pointsCopyPasteTarget = remember(clipboardManager) { PointsCopyPasteTarget(points, failures, clipboardManager) }
+        val pointsGeneralActions = remember(clipboardManager) { PointsGeneralActions(points, failures, clipboardManager) }
 
-        // TODO refactor
-        observeKeys({ it.key == Key.ShiftLeft || it.key == Key.ShiftRight }) { isShiftPressed = it.type == KeyEventType.KeyDown }
+        LaunchedEffect(Unit) {
+            observeKeys({ it.key == Key.ShiftLeft || it.key == Key.ShiftRight }) {
+                isShiftPressed = it.type == KeyEventType.KeyDown
+            }
+            fullPointsSelection.integrateIntoKeysFlow(observeKeysPressed)
+            worldInputTarget.integrateIntoKeysFlow(observeKeysPressed)
+            pointsGeneralActions.integrateIntoKeysFlow(observeKeysPressed)
+            info.integrateIntoKeysFlow(observeKeysPressed)
+        }
 
         App(
             failures,
-            world,
             worldAssignees,
-            worldInputTarget,
-            points,
-            fullPointsSelection,
-            pointsCopyPasteTarget,
-            keysFlow,
-            observeKeys,
-            cursorInput,
-            nearestPoint,
-            cursor
+            pointsGeneralActions,
+            info,
+            canvasContextMenu,
+            pointsCanvas
         )
     }
 }

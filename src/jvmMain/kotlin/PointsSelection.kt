@@ -1,15 +1,28 @@
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.key
 import components.CursorInput
+import util.isWinCtrlPressed
+import util.toIntArray
 
-interface PointsSelection {
-
+interface SelectedPoints {
     val selected: List<Int>
+}
+
+interface SelectedPointsAwareOfNearestPoint: SelectedPoints {
+    val manuallySelected: List<Int>
+}
+
+interface PointsSelection: SelectedPoints {
 
     fun select(vararg indices: Int)
 
     fun selectOnly(vararg indices: Int)
+
+    fun selectAll()
 
     fun deselect(vararg indices: Int)
 
@@ -28,9 +41,7 @@ interface PointsSelection {
     fun splitInHalf()
 }
 
-interface PointsSelectionAwareOfNearestPoint: PointsSelection {
-    val manuallySelected: List<Int>
-}
+interface PointsSelectionAwareOfNearestPoint: PointsSelection, SelectedPointsAwareOfNearestPoint
 
 class ComposablePointsSelection(private val points: Points): PointsSelection {
 
@@ -44,6 +55,8 @@ class ComposablePointsSelection(private val points: Points): PointsSelection {
     override fun selectOnly(vararg indices: Int) {
         selected = indices.toList().distinct()
     }
+
+    override fun selectAll() = select(*points.points.indices.toIntArray())
 
     override fun deselect(vararg indices: Int) {
         selected -= indices.asList()
@@ -82,6 +95,8 @@ class ComposablePointsSelectionAwareOfNearestPoint(
     override fun select(vararg indices: Int) = manualSelection.select(*indices)
 
     override fun selectOnly(vararg indices: Int) = manualSelection.selectOnly(*indices)
+
+    override fun selectAll() = manualSelection.selectAll()
 
     override fun deselect(vararg indices: Int) = manualSelection.deselect(*indices)
 
@@ -161,3 +176,14 @@ class PointsSelectionFeaturingSwitchingCursorInputModeToSelection(
 }
 
 fun PointsSelection.isNotEmpty() = selected.isNotEmpty()
+
+fun PointsSelection.integrateIntoKeysFlow(
+    observeKeysPressed: (
+        predicate: (KeyEvent) -> Boolean,
+        action: (KeyEvent) -> Unit
+    ) -> Unit
+) {
+    observeKeysPressed.invoke({ it.key == Key.Backspace }) { remove() }
+    observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAll() }
+    observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnection() }
+}

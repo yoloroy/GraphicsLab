@@ -1,6 +1,6 @@
 package components
 
-import CanvasPoints
+import ComposableCanvasPoints
 import ComposableCursor
 import ComposablePoints
 import NearestPoint
@@ -33,7 +33,7 @@ class CursorInput( // TODO refactor too many dependencies
     private val selection: PointsSelectionAwareOfNearestPoint,
     private val isShiftPressedProvider: () -> Boolean,
     private val nearestPoint: NearestPoint,
-    private val canvasPoints: CanvasPoints,
+    private val canvasPoints: ComposableCanvasPoints,
     private val points: ComposablePoints,
     private val world: World,
     val dragState: CursorDragState

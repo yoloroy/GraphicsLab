@@ -127,3 +127,5 @@ fun Points.splitInHalf(ai: Int, bi: Int) {
     connect(ai, i)
     connect(bi, i)
 }
+
+fun Points.isConnected(ai: Int, bi: Int) = adjacencyMatrix[ai][bi]

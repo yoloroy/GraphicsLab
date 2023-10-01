@@ -5,12 +5,18 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.key
 import kotlin.math.PI
 
-class WorldInputTarget(
+interface WorldInputTarget {
+    fun integrateIntoKeysFlow(
+        observeKeysPressed: (predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit) -> Unit
+    )
+}
+
+class WorldInputTargetImpl(
     private val world: ComposableWorld,
     private val movementStep: Float,
     private val scaleStep: Float,
     private val rotationStep: Float
-) {
+): WorldInputTarget {
     private val overrides = mapOf(
         Key.One to { setWorldRotation(0, 0, 0) },
         Key.Two to { setWorldRotation(0, 0, PI / 2) },
@@ -36,7 +42,7 @@ class WorldInputTarget(
         Key.V to { world.zxRadians -= rotationStep }
     )
 
-    fun integrateIntoKeysFlow(
+    override fun integrateIntoKeysFlow(
         observeKeysPressed: (predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit) -> Unit
     ) {
         for ((key, action) in overrides) {

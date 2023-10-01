@@ -26,7 +26,7 @@ interface Failures {
     fun logException(message: String)
 
     @Composable
-    fun console(modifier: Modifier)
+    fun Console(modifier: Modifier)
 }
 
 class ComposableFailures: Failures {
@@ -42,7 +42,7 @@ class ComposableFailures: Failures {
     }
 
     @Composable
-    override fun console(modifier: Modifier) {
+    override fun Console(modifier: Modifier) {
         val coroutineScope = rememberCoroutineScope()
 
         var timedFailures by remember { mutableStateOf(listOf<TimedValue<Type>>()) }

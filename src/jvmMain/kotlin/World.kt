@@ -93,7 +93,7 @@ class WorldAssignees(private val world: ComposableWorld) {
 
     context(MenuScope)
     @Composable
-    fun menuBarItems() {
+    fun MenuBarItems() {
         Item(text = "World offset", onClick = offsetAssignee::open)
         Item(text = "World scale", onClick = scaleAssignee::open)
         Item(text = "World XY rotation", onClick = xyRadiansAssignee::open)
@@ -102,7 +102,7 @@ class WorldAssignees(private val world: ComposableWorld) {
     }
 
     @Composable
-    fun dialogs() {
+    fun Dialogs() {
         offsetAssignee.dialog()
         scaleAssignee.dialog()
         xyRadiansAssignee.dialog()

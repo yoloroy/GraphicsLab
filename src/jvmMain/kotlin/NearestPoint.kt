@@ -24,7 +24,7 @@ interface NearestPoint {
 }
 
 class ComposableNearestPoint(
-    private val points: CanvasPoints,
+    private val points: ComposableCanvasPoints,
     private val cursor: Cursor,
     private val selection: PointsSelection,
     private val failures: Failures

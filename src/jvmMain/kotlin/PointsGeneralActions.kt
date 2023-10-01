@@ -1,12 +1,18 @@
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.window.MenuScope
 import components.Failures
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import util.isWinCtrlPressed
 
-class PointsCopyPasteTarget(
+class PointsGeneralActions(
     private val points: ComposablePoints,
     private val failures: Failures,
     private val clipboardManager: ClipboardManager
@@ -45,6 +51,8 @@ class PointsCopyPasteTarget(
         }
     }
 
+    fun clear() = points.clear()
+
     @Serializable
     private data class State(
         val points: List<XYZ>,
@@ -54,4 +62,22 @@ class PointsCopyPasteTarget(
             const val EMPTY_JSON = "{ \"points\" = [], \"connections\" = [] }"
         }
     }
+}
+
+context(MenuScope)
+@Composable
+fun PointsGeneralActions.MenuBarItems() {
+    Item(text = "Copy", onClick = ::copy)
+    Item(text = "Paste", onClick = ::paste)
+    Item(text = "Clear", onClick = ::clear)
+}
+
+fun PointsGeneralActions.integrateIntoKeysFlow(
+    observeKeysPressed: (
+        predicate: (KeyEvent) -> Boolean,
+        action: (KeyEvent) -> Unit
+    ) -> Unit
+) {
+    observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.C }) { copy() }
+    observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.V }) { paste() }
 }
