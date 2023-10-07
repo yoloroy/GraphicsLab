@@ -5,6 +5,7 @@ import util.combinationsOfPairs
 interface Points {
     val points: List<XYZ>
     val adjacencyMatrix: List<List<Boolean>>
+    val triangles: List<Triple<Int, Int, Int>>
 
     fun append(xyz: XYZ)
 
@@ -21,6 +22,7 @@ class ComposablePoints(private val failures: Failures): Points {
 
     override var points by mutableStateOf(mutableListOf<XYZ>(), neverEqualPolicy())
     override var adjacencyMatrix by mutableStateOf(mutableListOf<MutableList<Boolean>>(), neverEqualPolicy())
+    override var triangles by mutableStateOf(mutableListOf<Triple<Int, Int, Int>>(), neverEqualPolicy())
 
     override fun setConnection(ai: Int, bi: Int, value: Boolean) {
         if (ai !in points.indices) {

@@ -13,9 +13,10 @@ import kotlinx.serialization.json.Json
 import util.isWinCtrlPressed
 
 class PointsGeneralActions(
-    private val points: ComposablePoints,
+    private val points: ComposablePoints, // TODO refactor
     private val failures: Failures,
-    private val clipboardManager: ClipboardManager
+    private val clipboardManager: ClipboardManager,
+    private val selection: PointsSelection
 ) {
     fun copy() {
         try {
@@ -44,6 +45,24 @@ class PointsGeneralActions(
                     this[bi][ai] = true
                 }
             }
+            points.triangles = mutableListOf<Triple<Int, Int, Int>>().apply {
+                // [..., 0,1, 1,2, 2,0, ...] - it is the triangle
+                var i = 0
+                while (i + 5 in loadedState.connections.indices) {
+                    val a1 = loadedState.connections[i + 0]
+                    val b2 = loadedState.connections[i + 1]
+                    val b1 = loadedState.connections[i + 2]
+                    val c2 = loadedState.connections[i + 3]
+                    val c1 = loadedState.connections[i + 4]
+                    val a2 = loadedState.connections[i + 5]
+
+                    if (a1 == a2 && b1 == b2 && c1 == c2) {
+                        add(Triple(a1, b1, c1))
+                        i += 5
+                    }
+                    i++
+                }
+            }
         } catch (e: SerializationException) {
             failures.logMistake("You did not pasted save")
         } catch (e: IllegalArgumentException) {
@@ -51,7 +70,10 @@ class PointsGeneralActions(
         }
     }
 
-    fun clear() = points.clear()
+    fun clear() {
+        selection.clear()
+        points.clear()
+    }
 
     @Serializable
     private data class State(

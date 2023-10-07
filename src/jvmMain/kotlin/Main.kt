@@ -68,15 +68,15 @@ fun main() = application {
         transparent = IS_TRANSPARENT_BUILD
     ) {
         val clipboardManager = LocalClipboardManager.current
-        val pointsGeneralActions = remember(clipboardManager) { PointsGeneralActions(points, failures, clipboardManager) }
+        val pointsGeneralActions = remember(clipboardManager) { PointsGeneralActions(points, failures, clipboardManager, fullPointsSelection) }
 
         LaunchedEffect(Unit) {
             observeKeys({ it.key == Key.ShiftLeft || it.key == Key.ShiftRight }) {
                 isShiftPressed = it.type == KeyEventType.KeyDown
             }
+            pointsGeneralActions.integrateIntoKeysFlow(observeKeysPressed)
             fullPointsSelection.integrateIntoKeysFlow(observeKeysPressed)
             worldInputTarget.integrateIntoKeysFlow(observeKeysPressed)
-            pointsGeneralActions.integrateIntoKeysFlow(observeKeysPressed)
             info.integrateIntoKeysFlow(observeKeysPressed)
         }
 

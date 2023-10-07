@@ -49,6 +49,7 @@ class ComposableCanvasContextMenu(
                     if (selection.manuallySelected.isNotEmpty()) {
                         add(ContextMenuItem("Clear selection", selection::clear))
                     }
+                    // TODO add make Triangle action
                 }
             },
             state = contextMenuState,

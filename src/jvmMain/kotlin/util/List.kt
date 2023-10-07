@@ -17,3 +17,7 @@ fun <T> List<T>.takeIfNotEmpty() = takeIf { isNotEmpty() }
 fun <T> List<T>.combinationsOfPairs() = flatMapIndexed { ai, a -> List(lastIndex - ai) { i -> a to this[i + ai + 1] } }
 
 fun <T> List<IndexedValue<T>>.retrieveIndices() = map { it.index }
+
+inline fun <T> List<Pair<T, T>>.filterBoth(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) && predicate(it.second) }
+
+inline fun <T> Sequence<Pair<T, T>>.filterBoth(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) && predicate(it.second) } // TODO move
