@@ -1,6 +1,7 @@
 import androidx.compose.runtime.*
 import components.Failures
 import util.combinationsOfPairs
+import util.anyEquals
 
 interface Points {
     val points: List<XYZ>
@@ -16,6 +17,8 @@ interface Points {
     fun setConnection(ai: Int, bi: Int, value: Boolean)
 
     fun transform(indices: Iterable<Int>, transform: (XYZ) -> XYZ)
+
+    fun createPolygon(ai: Int, bi: Int, ci: Int)
 }
 
 class ComposablePoints(private val failures: Failures): Points {
@@ -32,6 +35,12 @@ class ComposablePoints(private val failures: Failures): Points {
         if (bi !in points.indices) {
             failures.logException("Point[$bi] does not exist")
             return
+        }
+
+        if (!value) {
+            triangles = triangles.apply {
+                removeAll { it.anyEquals(ai) || it.anyEquals(bi) }
+            }
         }
 
         adjacencyMatrix = adjacencyMatrix.apply {
@@ -59,6 +68,9 @@ class ComposablePoints(private val failures: Failures): Points {
             removeAt(index)
             forEach { it.removeAt(index) }
         }
+        triangles = triangles.apply {
+            removeAll { it.anyEquals(index) }
+        }
     }
 
     override fun clear() {
@@ -72,6 +84,13 @@ class ComposablePoints(private val failures: Failures): Points {
                 points[i] = transform(point)
             }
         }
+    }
+
+    override fun createPolygon(ai: Int, bi: Int, ci: Int) {
+        connect(ai, bi)
+        connect(bi, ci)
+        connect(ci, ai)
+        triangles = triangles.apply { add(Triple(ai, bi, ci)) }
     }
 }
 

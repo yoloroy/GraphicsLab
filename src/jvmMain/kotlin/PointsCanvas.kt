@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import components.CursorInput
 import components.diff
 import components.handleCursorInput
-import util.filterBoth
+import util.filterAny
 
 interface PointsCanvas {
     @Composable
@@ -49,9 +49,9 @@ class ComposablePointsCanvas(
                 drawLine(Color.Black, c, a)
             }
 
-            /*for ((ai, bi) in points.connections.filterBoth *//*TODO refactor*//* { it in points.nonTriangles }) {
+            for ((ai, bi) in points.connections.filterAny { it in points.nonTriangles }) {
                 drawLine(Color.Red, points.points[ai], points.points[bi])
-            }*/
+            }
 
             for (point in points.points) {
                 drawCircle(Color.Black, 2F, point)

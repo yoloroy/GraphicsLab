@@ -18,6 +18,6 @@ fun <T> List<T>.combinationsOfPairs() = flatMapIndexed { ai, a -> List(lastIndex
 
 fun <T> List<IndexedValue<T>>.retrieveIndices() = map { it.index }
 
-inline fun <T> List<Pair<T, T>>.filterBoth(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) && predicate(it.second) }
+inline fun <T> Sequence<Pair<T, T>>.filterAny(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) || predicate(it.second) }
 
-inline fun <T> Sequence<Pair<T, T>>.filterBoth(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) && predicate(it.second) } // TODO move
+fun <T> Triple<T, T, T>.anyEquals(value: T) = first == value || second == value || third == value

@@ -42,9 +42,12 @@ class ComposableCanvasContextMenu(
                     if (affected.size == 2 && points.isConnected(affected[0], affected[1])) {
                         add(ContextMenuItem("Split in half", selection::splitInHalf))
                     }
-                    if (selection.selected.size >= 2) {
+                    if (affected.size >= 2) {
                         add(ContextMenuItem("Connect", selection::connect))
                         add(ContextMenuItem("Disconnect", selection::disconnect))
+                    }
+                    if (affected.size == 3) {
+                        add(ContextMenuItem("Create Polygon", selection::createPolygon))
                     }
                     if (selection.manuallySelected.isNotEmpty()) {
                         add(ContextMenuItem("Clear selection", selection::clear))

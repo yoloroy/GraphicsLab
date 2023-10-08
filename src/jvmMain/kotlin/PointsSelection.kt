@@ -18,6 +18,8 @@ interface SelectedPointsAwareOfNearestPoint: SelectedPoints {
 
 interface PointsSelection: SelectedPoints {
 
+    fun createPolygon()
+
     fun select(vararg indices: Int)
 
     fun selectOnly(vararg indices: Int)
@@ -46,6 +48,11 @@ interface PointsSelectionAwareOfNearestPoint: PointsSelection, SelectedPointsAwa
 class ComposablePointsSelection(private val points: Points): PointsSelection {
 
     override var selected by mutableStateOf(listOf<Int>()) // TODO Set
+
+    override fun createPolygon() {
+        require(selected.size == 3)
+        points.createPolygon(selected[0], selected[1], selected[2])
+    }
 
     override fun select(vararg indices: Int) {
         selected += indices.asList()
@@ -91,6 +98,8 @@ class ComposablePointsSelectionAwareOfNearestPoint(
 
     override val manuallySelected by manualSelection::selected
     override val selected get() = manuallySelected.ifEmpty { listOfNotNull(nearestPoint.index) }
+
+    override fun createPolygon() = manualSelection.createPolygon()
 
     override fun select(vararg indices: Int) = manualSelection.select(*indices)
 

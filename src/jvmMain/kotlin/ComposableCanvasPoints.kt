@@ -10,7 +10,7 @@ interface CanvasPoints {
     val connections: Sequence<Pair<Int, Int>>
 
     val triangles: List<Triple<Int, Int, Int>>
-    val nonTriangles: List<Int>    
+    val nonTriangles: Set<Int>
 }
 
 class ComposableCanvasPoints(
@@ -35,7 +35,7 @@ class ComposableCanvasPoints(
         }
     }
     override val nonTriangles by derivedStateOf {
-        points.indices.toIntArray().toList() - triangles.flatMap { listOf(it.first, it.second, it.third) }
+        points.indices.toIntArray().toSet() - worldPoints.triangles.flatMap { listOf(it.first, it.second, it.third) }.toSet()
     }
 }
 
