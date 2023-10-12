@@ -1,12 +1,22 @@
 package util
 
 import XYZ
+import androidx.compose.ui.unit.IntSize
 import components.Assignee
 
 fun Assignee.Companion.forXYZ(name: String, assign: (XYZ) -> Unit, startValue: String): Assignee<XYZ> {
     return Assignee(
         name,
         ::transformSpaceDelimitedStringToXYZ,
+        assign,
+        startValue
+    )
+}
+
+fun Assignee.Companion.forIntSize(name: String, assign: (IntSize) -> Unit, startValue: String): Assignee<IntSize> {
+    return Assignee(
+        name,
+        ::transformSpaceDelimitedStringToIntSize,
         assign,
         startValue
     )

@@ -22,7 +22,8 @@ fun App(
     pointsGeneralActions: PointsGeneralActions,
     info: Info,
     canvasContextMenu: CanvasContextMenu,
-    pointsCanvas: PointsCanvas
+    pointsCanvas: PointsCanvas,
+    renderMode: ComposableRenderMode
 ) {
     MenuBar {
         Menu(text = "Actions") {
@@ -30,6 +31,9 @@ fun App(
         }
         Menu(text = "Assign") {
             worldAssignees.MenuBarItems()
+        }
+        Menu(text = "Render") {
+            renderMode.MenuBarItems()
         }
         Menu(text = "Help") {
             info.MenuBarItem()
@@ -45,5 +49,6 @@ fun App(
         }
         info.Dialog()
         worldAssignees.Dialogs()
+        renderMode.Dialogs()
     }
 }

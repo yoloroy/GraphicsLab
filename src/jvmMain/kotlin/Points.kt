@@ -63,19 +63,20 @@ class ComposablePoints(private val failures: Failures): Points {
             return
         }
 
-        points = points.apply { removeAt(index) }
+        triangles = triangles.apply {
+            removeAll { it.anyEquals(index) }
+        }
         adjacencyMatrix = adjacencyMatrix.apply {
             removeAt(index)
             forEach { it.removeAt(index) }
         }
-        triangles = triangles.apply {
-            removeAll { it.anyEquals(index) }
-        }
+        points = points.apply { removeAt(index) }
     }
 
     override fun clear() {
         points = mutableListOf()
         adjacencyMatrix = mutableListOf()
+        triangles = mutableListOf()
     }
 
     override fun transform(indices: Iterable<Int>, transform: (XYZ) -> XYZ) {

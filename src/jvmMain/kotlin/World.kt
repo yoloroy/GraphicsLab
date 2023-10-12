@@ -123,10 +123,11 @@ fun Offset.toWorldXYZ(world: World) = XYZ.fromOffset(this)
     .`🔄X`(-world.yzRadians)
     .`🔄Z`(-world.xyRadians)
 
-fun XYZ.toCanvas(world: World) = this
+fun XYZ.toCanvasXYZ(world: World) = this
     .scaled(world.scale)
     .`🔄Z`(world.xyRadians)
     .`🔄X`(world.yzRadians)
     .`🔄Y`(world.zxRadians)
     .offset(world.offset)
-    .toOffset()
+
+fun XYZ.toCanvasOffset(world: World) = toCanvasXYZ(world).toOffset()

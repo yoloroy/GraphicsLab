@@ -21,7 +21,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.onPointerEvent
 import indicesOfContainingIn
-import toCanvas
+import toCanvasOffset
 import toWorldXYZ
 import util.areaOf
 import util.drawArrow
@@ -116,9 +116,9 @@ class CursorInput( // TODO refactor too many dependencies
             val endXYZ = end.toWorldXYZ(world)
             val diff = endXYZ - startXYZ
 
-            val xShiftEnd = (startXYZ + XYZ.ZERO.copy(x = diff.x)).toCanvas(world)
-            val yShiftEnd = (startXYZ + XYZ.ZERO.copy(y = diff.y)).toCanvas(world)
-            val zShiftEnd = (startXYZ + XYZ.ZERO.copy(z = diff.z)).toCanvas(world)
+            val xShiftEnd = (startXYZ + XYZ.ZERO.copy(x = diff.x)).toCanvasOffset(world)
+            val yShiftEnd = (startXYZ + XYZ.ZERO.copy(y = diff.y)).toCanvasOffset(world)
+            val zShiftEnd = (startXYZ + XYZ.ZERO.copy(z = diff.z)).toCanvasOffset(world)
 
             drawArrow(Color.Black, start, end)
             drawArrow(Color.Red, start, xShiftEnd)

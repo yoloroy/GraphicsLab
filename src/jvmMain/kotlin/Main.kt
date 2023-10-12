@@ -1,6 +1,7 @@
 import androidx.compose.runtime.*
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import components.*
@@ -57,7 +58,19 @@ fun main() = application {
             )
         }
     }
-    val pointsCanvas = remember { ComposablePointsCanvas(IS_TRANSPARENT_BUILD, world, cursorInput, canvasPoints, fullPointsSelection, nearestPoint) }
+    val wireframeComponent = WireframeComponent(canvasPoints, world)
+    val rayTracingComponent = RayTracingComponent(canvasPoints, IntSize(800, 550), world, rememberCoroutineScope())
+    val pointsCanvas = remember {
+        ComposablePointsCanvas(
+            isTransparentBuild = IS_TRANSPARENT_BUILD,
+            cursorInput = cursorInput,
+            points = canvasPoints,
+            selection = fullPointsSelection,
+            nearestPoint = nearestPoint,
+            trianglesComponent = wireframeComponent
+        )
+    }
+    val renderMode = remember { ComposableRenderMode(pointsCanvas, failures, wireframeComponent, rayTracingComponent, IntSize(800, 550)) }
     val canvasContextMenu = remember { ComposableCanvasContextMenu(fullPointsSelection, cursorInput, cursorXYZ, points) }
     val info = remember { ComposableInfo() }
 
@@ -86,7 +99,8 @@ fun main() = application {
             pointsGeneralActions,
             info,
             canvasContextMenu,
-            pointsCanvas
+            pointsCanvas,
+            renderMode
         )
     }
 }

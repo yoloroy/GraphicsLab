@@ -31,7 +31,7 @@ class ComposableNearestPoint(
 ): NearestPoint {
 
     override val index by derivedStateOf {
-        points.points
+        points.offsets
             .takeIfNotEmpty()
             ?.indexOfMinBy { it distanceTo cursor.position }
     }
@@ -65,7 +65,7 @@ class ComposableNearestPoint(
             drawLine(
                 color = Color.Black,
                 start = cursor.position,
-                end = points.points[index],
+                end = points.offsets[index],
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
             )
         }

@@ -6,7 +6,8 @@ import util.retrieveIndices
 import util.toIntArray
 
 interface CanvasPoints {
-    val points: List<Offset>
+    val points: List<XYZ>
+    val offsets: List<Offset>
     val connections: Sequence<Pair<Int, Int>>
 
     val triangles: List<Triple<Int, Int, Int>>
@@ -17,14 +18,13 @@ class ComposableCanvasPoints(
     private val worldPoints: Points,
     private val world: World
 ): CanvasPoints {
-    override val points by derivedStateOf { worldPoints.points.map { it.toCanvas(world) } }
-    override val connections get() = worldPoints.connections
-
-    override val triangles by derivedStateOf {
-        worldPoints.triangles.filter { (ai, bi, ci) -> // TODO move math of triangle to separate Triangle class
-            val a = points[ai]
-            val b = points[bi]
-            val c = points[ci]
+    private val state by derivedStateOf {
+        val points = worldPoints.points.map { it.toCanvasXYZ(world) }
+        val offsets = points.map { it.toOffset() }
+        val triangles = worldPoints.triangles.filter { (ai, bi, ci) -> // TODO move math of triangle to separate Triangle class
+            val a = offsets[ai]
+            val b = offsets[bi]
+            val c = offsets[ci]
 
             val dx1 = b.x - a.x
             val dx2 = c.x - b.x
@@ -33,10 +33,24 @@ class ComposableCanvasPoints(
 
             dx1 * dy2 - dx2 * dy1 >= 0
         }
+        val nonTriangles = offsets.indices.toIntArray().toSet() - worldPoints.triangles.flatMap { listOf(it.first, it.second, it.third) }.toSet()
+
+        State(points, offsets, triangles, nonTriangles)
     }
-    override val nonTriangles by derivedStateOf {
-        points.indices.toIntArray().toSet() - worldPoints.triangles.flatMap { listOf(it.first, it.second, it.third) }.toSet()
-    }
+
+    override val points get() = state.points
+    override val offsets get() = state.offsets
+    override val triangles get() = state.triangles
+    override val nonTriangles get() = state.nonTriangles
+
+    override val connections get() = worldPoints.connections
+
+    private data class State(
+        val points: List<XYZ>,
+        val offsets: List<Offset>,
+        val triangles: List<Triple<Int, Int, Int>>,
+        val nonTriangles: Set<Int>
+    )
 }
 
-fun ComposableCanvasPoints.indicesOfContainingIn(rect: Rect) = points.withIndex().filter { it.value in rect }.retrieveIndices()
+fun ComposableCanvasPoints.indicesOfContainingIn(rect: Rect) = offsets.withIndex().filter { it.value in rect }.retrieveIndices()
