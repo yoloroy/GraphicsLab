@@ -94,7 +94,8 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         onKeyEvent = keysFlow.createEmmitterIn(coroutineScope).returning(false),
         undecorated = IS_TRANSPARENT_BUILD,
-        transparent = IS_TRANSPARENT_BUILD
+        transparent = IS_TRANSPARENT_BUILD,
+        title = "GraphicsLab"
     ) {
         val clipboardManager = LocalClipboardManager.current
         val pointsGeneralActions = remember(clipboardManager) { PointsGeneralActions(points, failures, clipboardManager, fullPointsSelection) }
