@@ -24,9 +24,13 @@ Toolbar contains:
 
 There are implemented simple ray tracing algorithm working on triangles.
 
+## Performance
+
+Picture from above containing ~8000 points, ~2600 triangles in resolution of 900x1200 is renders in ~10 seconds on my 3.6GHz dual-core Intel Core i5.
+
 ## Import/Export
 
-Import and export is implemented using json format and data is copies and pastes using clipboard.
+Import and export is implemented using json format and data is copies and pastes via clipboard.
 Converter from STL to this program format is [here](https://gist.github.com/yoloroy/d518d6ca6fe2ccdd797b978aa9daefdc).
 
 ## TODO
