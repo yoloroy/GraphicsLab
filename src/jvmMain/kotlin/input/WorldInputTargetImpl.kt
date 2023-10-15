@@ -1,15 +1,13 @@
 @file:Suppress("SameParameterValue")
 
+package input
+
+import points.ComposableWorld
+import points.XYZ
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.key
 import kotlin.math.PI
-
-interface WorldInputTarget {
-    fun integrateIntoKeysFlow(
-        observeKeysPressed: (predicate: (KeyEvent) -> Boolean, action: (KeyEvent) -> Unit) -> Unit
-    )
-}
 
 class WorldInputTargetImpl(
     private val world: ComposableWorld,

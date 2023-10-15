@@ -1,8 +1,11 @@
+package components
+
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.MenuScope
-import components.Assignee
-import components.Failures
+import canvas.ComposablePointsCanvas
+import canvas.RayTracingComponent
+import canvas.WireframeComponent
 import common.forIntSize
 
 interface RenderMode {
@@ -64,7 +67,7 @@ class ComposableRenderMode(
             pointsCanvas.trianglesComponent = rayTracingComponent
             rayTracingComponent.isPlaying = true
         } else {
-            failures.logException("Triangles component of ComposablePointsCanvas !is RayTracingComponent")
+            failures.logException("Triangles component of canvas.ComposablePointsCanvas !is canvas.RayTracingComponent")
         }
     }
 }

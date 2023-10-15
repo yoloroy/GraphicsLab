@@ -1,6 +1,6 @@
 package common
 
-import XYZ
+import points.XYZ
 import androidx.compose.ui.unit.IntSize
 import components.Assignee
 import util.transformSpaceDelimitedStringToIntSize

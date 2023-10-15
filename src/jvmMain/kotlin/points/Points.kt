@@ -1,3 +1,5 @@
+package points
+
 import androidx.compose.runtime.*
 import components.Failures
 import util.combinationsOfPairs

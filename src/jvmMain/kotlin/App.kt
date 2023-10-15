@@ -9,9 +9,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.MenuBar
-import components.CanvasContextMenu
-import components.Failures
-import components.Info
+import canvas.PointsCanvas
+import components.*
+import input.PointsGeneralActions
 
 context(FrameWindowScope)
 @Composable
@@ -23,7 +23,7 @@ fun App(
     info: Info,
     canvasContextMenu: CanvasContextMenu,
     pointsCanvas: PointsCanvas,
-    renderMode: ComposableRenderMode
+    renderMode: RenderMode
 ) {
     MenuBar {
         Menu(text = "Actions") {

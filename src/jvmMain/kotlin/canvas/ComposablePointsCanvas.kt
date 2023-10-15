@@ -1,3 +1,6 @@
+package canvas
+
+import points.SelectedPoints
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -9,21 +12,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import components.CursorInput
-import components.diff
-import components.handleCursorInput
-
-interface PointsCanvas {
-    @Composable
-    fun View(modifier: Modifier)
-}
+import input.CursorInput
+import input.diff
+import input.handleCursorInput
 
 class ComposablePointsCanvas(
     private val isTransparentBuild: Boolean,
     private val cursorInput: CursorInput,
     private val points: CanvasPoints,
     private val selection: SelectedPoints,
-    private val nearestPoint: NearestPoint,
+    private val nearestPoint: NearestPointView,
     trianglesComponent: PointsCanvas
 ): PointsCanvas {
 

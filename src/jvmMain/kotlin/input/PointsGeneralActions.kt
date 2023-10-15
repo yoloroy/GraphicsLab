@@ -1,11 +1,16 @@
-import androidx.compose.runtime.Composable
+package input
+
+import points.ComposablePoints
+import points.PointsSelection
+import points.TriangleIndices
+import points.XYZ
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.window.MenuScope
 import components.Failures
+import points.connections
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
@@ -20,10 +25,12 @@ class PointsGeneralActions(
 ) {
     fun copy() {
         try {
-            val encoded = Json.encodeToString(State(
+            val encoded = Json.encodeToString(
+                State(
                 points.points,
                 points.connections.flatMap { (ai, bi) -> listOf(ai, bi) }.toList()
-            ))
+            )
+            )
             clipboardManager.setText(AnnotatedString(encoded))
         } catch (e: Exception) {
             failures.logException(e.message ?: "Uncaught exception")
@@ -35,7 +42,7 @@ class PointsGeneralActions(
             val loadedState = Json.decodeFromString<State>(clipboardManager.getText()?.text ?: State.EMPTY_JSON)
 
             if (loadedState.connections.any { it !in loadedState.points.indices }) {
-                throw IllegalStateException("Bad indices in connections of pasted Json")
+                throw IllegalStateException("Bad indices in points.getConnections of pasted Json")
             }
 
             points.points = loadedState.points.toMutableList()
@@ -81,17 +88,9 @@ class PointsGeneralActions(
         val connections: List<Int>
     ) {
         companion object {
-            const val EMPTY_JSON = "{ \"points\" = [], \"connections\" = [] }"
+            const val EMPTY_JSON = "{ \"points\" = [], \"points.getConnections\" = [] }"
         }
     }
-}
-
-context(MenuScope)
-@Composable
-fun PointsGeneralActions.MenuBarItems() {
-    Item(text = "Copy", onClick = ::copy)
-    Item(text = "Paste", onClick = ::paste)
-    Item(text = "Clear", onClick = ::clear)
 }
 
 fun PointsGeneralActions.integrateIntoKeysFlow(

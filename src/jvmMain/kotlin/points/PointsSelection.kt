@@ -1,11 +1,9 @@
+package points
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.key
-import components.CursorInput
-import util.isWinCtrlPressed
+import input.CursorInput
 import util.toIntArray
 
 interface SelectedPoints {
@@ -185,14 +183,3 @@ class PointsSelectionFeaturingSwitchingCursorInputModeToSelection(
 }
 
 fun PointsSelection.isNotEmpty() = selected.isNotEmpty()
-
-fun PointsSelection.integrateIntoKeysFlow(
-    observeKeysPressed: (
-        predicate: (KeyEvent) -> Boolean,
-        action: (KeyEvent) -> Unit
-    ) -> Unit
-) {
-    observeKeysPressed.invoke({ it.key == Key.Backspace }) { remove() }
-    observeKeysPressed.invoke({ it.isWinCtrlPressed && it.key == Key.A }) { selectAll() }
-    observeKeysPressed.invoke({ it.key == Key.Spacebar }) { toggleConnection() }
-}

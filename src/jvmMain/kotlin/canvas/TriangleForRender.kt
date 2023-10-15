@@ -1,13 +1,13 @@
+package canvas
+
+import points.TriangleIndices
+import points.XYZ
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
 
 const val TRIANGLE_PARALLEL_RAY_THRESHOLD = 0.05
@@ -66,5 +66,5 @@ class TriangleForRender(
         }
     }
 
-    override fun toString() = "TriangleForRender($a, $b, $c)"
+    override fun toString() = "canvas.TriangleForRender($a, $b, $c)"
 }

@@ -1,6 +1,6 @@
 package util
 
-import XYZ
+import points.XYZ
 import components.TransformationResult
 
 fun XYZ.Companion.fromSpaceDelimitedString(string: String) = string

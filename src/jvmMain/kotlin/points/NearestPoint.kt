@@ -1,9 +1,10 @@
+package points
+
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import canvas.ComposableCanvasPoints
 import components.Failures
+import input.Cursor
 import util.distanceTo
 import util.indexOfMinBy
 import util.takeIfNotEmpty
@@ -18,9 +19,6 @@ interface NearestPoint {
     fun deselect()
 
     fun toggleSelection()
-
-    context(DrawScope)
-    fun drawPathToCursor()
 }
 
 class ComposableNearestPoint(
@@ -57,18 +55,6 @@ class ComposableNearestPoint(
         index
             ?.let { selection.toggleSelection(it) }
             ?: onPointDoesNotExist()
-    }
-
-    context(DrawScope)
-    override fun drawPathToCursor() {
-        index?.let { index ->
-            drawLine(
-                color = Color.Black,
-                start = cursor.position,
-                end = points.offsets[index],
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
-            )
-        }
     }
 
     private fun onPointDoesNotExist() {

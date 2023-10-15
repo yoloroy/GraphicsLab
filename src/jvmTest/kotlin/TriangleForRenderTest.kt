@@ -1,8 +1,11 @@
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import canvas.TriangleForRender
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import points.TriangleIndices
+import points.XYZ
 
 internal class TriangleForRenderTest {
 

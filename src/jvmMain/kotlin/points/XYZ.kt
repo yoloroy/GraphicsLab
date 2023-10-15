@@ -1,3 +1,5 @@
+package points
+
 import androidx.compose.ui.geometry.Offset
 import kotlinx.serialization.Serializable
 import util.times

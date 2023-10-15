@@ -1,18 +1,17 @@
+package canvas
+
+import points.Points
+import points.World
+import points.XYZ
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import points.connections
+import points.toCanvasXYZ
 import util.retrieveIndices
-
-interface CanvasPoints {
-    val points: List<XYZ>
-    val offsets: List<Offset>
-    val connections: Sequence<Pair<Int, Int>>
-
-    val triangles: List<TriangleForRender>
-    val nonTriangleConnections: List<Pair<Int, Int>>
-}
+import points.withoutPairsOf
 
 class ComposableCanvasPoints(
     private val worldPoints: Points,
@@ -36,6 +35,8 @@ class ComposableCanvasPoints(
 
     override val connections by derivedStateOf { worldPoints.connections }
 
+    fun indicesOfContainingIn(rect: Rect) = offsets.withIndex().filter { it.value in rect }.retrieveIndices()
+
     private data class State(
         val points: List<XYZ>,
         val offsets: List<Offset>,
@@ -43,5 +44,3 @@ class ComposableCanvasPoints(
         val nonTriangleConnections: List<Pair<Int, Int>>
     )
 }
-
-fun ComposableCanvasPoints.indicesOfContainingIn(rect: Rect) = offsets.withIndex().filter { it.value in rect }.retrieveIndices()

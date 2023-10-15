@@ -4,8 +4,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import canvas.*
 import components.*
+import input.*
 import kotlinx.coroutines.flow.*
+import points.*
 import util.createEmmitterIn
 import util.partition
 import util.returning
@@ -44,7 +47,14 @@ fun main() = application {
     val points = remember { ComposablePoints(failures) }
     val manualPointsSelection = remember { ComposablePointsSelection(points) }
     val canvasPoints = remember { ComposableCanvasPoints(points, world) }
-    val nearestPoint by remember { mutableStateOf(ComposableNearestPoint(canvasPoints, cursor, manualPointsSelection, failures)) }
+    val nearestPoint by remember { mutableStateOf(
+        ComposableNearestPoint(
+            canvasPoints,
+            cursor,
+            manualPointsSelection,
+            failures
+        )
+    ) }
     val pointsSelection = remember { ComposablePointsSelectionAwareOfNearestPoint(nearestPoint, manualPointsSelection) }
     val cursorDragState = remember { CursorDragState() }
     val cursorInput = remember { CursorInput(cursor, pointsSelection, { isShiftPressed }, nearestPoint, canvasPoints, points, world, cursorDragState) }
@@ -58,19 +68,25 @@ fun main() = application {
             )
         }
     }
-    val wireframeComponent = WireframeComponent(canvasPoints, world)
-    val rayTracingComponent = RayTracingComponent(canvasPoints, IntSize(800, 550), world, rememberCoroutineScope())
+    val nearestPointView = remember { ComposableNearestPointView(nearestPoint, cursor, canvasPoints) }
+    val wireframeComponent = remember { WireframeComponent(canvasPoints, world) }
     val pointsCanvas = remember {
         ComposablePointsCanvas(
             isTransparentBuild = IS_TRANSPARENT_BUILD,
             cursorInput = cursorInput,
             points = canvasPoints,
             selection = fullPointsSelection,
-            nearestPoint = nearestPoint,
+            nearestPoint = nearestPointView,
             trianglesComponent = wireframeComponent
         )
     }
-    val renderMode = remember { ComposableRenderMode(pointsCanvas, failures, wireframeComponent, rayTracingComponent, IntSize(800, 550)) }
+    val renderMode = remember { ComposableRenderMode(
+        pointsCanvas = pointsCanvas,
+        failures = failures,
+        startWireframeComponent = wireframeComponent,
+        startRayTracingComponent = RayTracingComponent(canvasPoints, IntSize(800, 550), world, coroutineScope),
+        startScreenSize = IntSize(800, 550)
+    ) }
     val canvasContextMenu = remember { ComposableCanvasContextMenu(fullPointsSelection, cursorInput, cursorXYZ, points) }
     val info = remember { ComposableInfo() }
 

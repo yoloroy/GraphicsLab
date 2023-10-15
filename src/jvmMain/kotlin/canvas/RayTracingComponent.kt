@@ -1,3 +1,7 @@
+package canvas
+
+import points.World
+import points.XYZ
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.runtime.*
@@ -13,7 +17,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.toSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import util.*
@@ -41,7 +44,7 @@ class RayTracingComponent(
     }
 
     init {
-        thread(false, name = "RayTracingComponent.Companion.renderThread") {
+        thread(false, name = "canvas.RayTracingComponent.Companion.renderThread") {
             val result = ImageBitmap(renderScreenSize.width, renderScreenSize.height)
             val canvas = Canvas(result)
 

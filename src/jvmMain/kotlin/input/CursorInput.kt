@@ -1,11 +1,10 @@
-package components
+package input
 
-import ComposableCanvasPoints
-import ComposableCursor
-import ComposablePoints
-import NearestPoint
-import PointsSelectionAwareOfNearestPoint
-import World
+import points.ComposablePoints
+import points.NearestPoint
+import points.PointsSelectionAwareOfNearestPoint
+import points.World
+import points.XYZ
 import androidx.compose.foundation.PointerMatcher
 import androidx.compose.foundation.gestures.onDrag
 import androidx.compose.foundation.onClick
@@ -20,9 +19,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.onPointerEvent
-import indicesOfContainingIn
-import toCanvasOffset
-import toWorldXYZ
+import canvas.ComposableCanvasPoints
+import points.toCanvasOffset
+import points.toWorldXYZ
 import util.areaOf
 import util.drawArrow
 import kotlin.math.max

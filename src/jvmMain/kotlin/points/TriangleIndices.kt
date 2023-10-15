@@ -1,3 +1,5 @@
+package points
+
 class TriangleIndices(
     val ai: Int,
     val bi: Int,
