@@ -6,8 +6,8 @@ import androidx.compose.ui.window.MenuScope
 import components.Assignee
 import components.Failures
 import util.TWO_PI
-import util.forFloat
-import util.forXYZ
+import common.forFloat
+import common.forXYZ
 import java.lang.Math.toDegrees
 
 interface World {

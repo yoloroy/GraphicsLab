@@ -1,12 +1,11 @@
 import androidx.compose.runtime.*
 import components.Failures
 import util.combinationsOfPairs
-import util.anyEquals
 
 interface Points {
     val points: List<XYZ>
     val adjacencyMatrix: List<List<Boolean>>
-    val triangles: List<Triple<Int, Int, Int>>
+    val triangles: List<TriangleIndices>
 
     fun append(xyz: XYZ)
 
@@ -25,7 +24,7 @@ class ComposablePoints(private val failures: Failures): Points {
 
     override var points by mutableStateOf(mutableListOf<XYZ>(), neverEqualPolicy())
     override var adjacencyMatrix by mutableStateOf(mutableListOf<MutableList<Boolean>>(), neverEqualPolicy())
-    override var triangles by mutableStateOf(mutableListOf<Triple<Int, Int, Int>>(), neverEqualPolicy())
+    override var triangles by mutableStateOf(mutableListOf<TriangleIndices>(), neverEqualPolicy())
 
     override fun setConnection(ai: Int, bi: Int, value: Boolean) {
         if (ai !in points.indices) {
@@ -91,7 +90,7 @@ class ComposablePoints(private val failures: Failures): Points {
         connect(ai, bi)
         connect(bi, ci)
         connect(ci, ai)
-        triangles = triangles.apply { add(Triple(ai, bi, ci)) }
+        triangles = triangles.apply { add(TriangleIndices(ai, bi, ci)) }
     }
 }
 

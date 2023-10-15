@@ -1,8 +1,11 @@
-package util
+package common
 
 import XYZ
 import androidx.compose.ui.unit.IntSize
 import components.Assignee
+import util.transformSpaceDelimitedStringToIntSize
+import util.transformSpaceDelimitedStringToXYZ
+import util.transformStringToFloat
 
 fun Assignee.Companion.forXYZ(name: String, assign: (XYZ) -> Unit, startValue: String): Assignee<XYZ> {
     return Assignee(

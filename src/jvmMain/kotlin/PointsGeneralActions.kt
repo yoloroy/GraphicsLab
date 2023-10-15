@@ -45,7 +45,7 @@ class PointsGeneralActions(
                     this[bi][ai] = true
                 }
             }
-            points.triangles = mutableListOf<Triple<Int, Int, Int>>().apply {
+            points.triangles = mutableListOf<TriangleIndices>().apply {
                 // [..., 0,1, 1,2, 2,0, ...] - it is the triangle
                 var i = 0
                 while (i + 5 in loadedState.connections.indices) {
@@ -57,7 +57,7 @@ class PointsGeneralActions(
                     val a2 = loadedState.connections[i + 5]
 
                     if (a1 == a2 && b1 == b2 && c1 == c2) {
-                        add(Triple(a1, b1, c1))
+                        add(TriangleIndices(a1, b1, c1))
                         i += 5
                     }
                     i++

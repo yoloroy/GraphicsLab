@@ -2,6 +2,7 @@ package util
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import components.TransformationResult
 import kotlin.math.max
@@ -19,3 +20,13 @@ fun transformSpaceDelimitedStringToIntSize(string: String): TransformationResult
 } catch (e: IndexOutOfBoundsException) {
     TransformationResult.FailureMessage("Not enough numbers are provided")
 }
+
+inline fun IntRect.forEachPixel(onEachPixel: (x: Int, y: Int) -> Unit) {
+    for (y in top until bottom) {
+        for (x in left until right) {
+            onEachPixel(x, y)
+        }
+    }
+}
+
+fun IntRect.toRect() = Rect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())

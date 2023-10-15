@@ -3,7 +3,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.MenuScope
 import components.Assignee
 import components.Failures
-import util.forIntSize
+import common.forIntSize
 
 interface RenderMode {
 

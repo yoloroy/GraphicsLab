@@ -17,11 +17,3 @@ fun <T> List<T>.takeIfNotEmpty() = takeIf { isNotEmpty() }
 fun <T> List<T>.combinationsOfPairs() = flatMapIndexed { ai, a -> List(lastIndex - ai) { i -> a to this[i + ai + 1] } }
 
 fun <T> List<IndexedValue<T>>.retrieveIndices() = map { it.index }
-
-fun <T> List<IndexedValue<T>>.retrieveValues() = map { it.value }
-
-fun <T> List<T>.filterIndices(predicate: (Int) -> Boolean) = withIndex().filter { (i, _) -> predicate(i) }.retrieveValues()
-
-inline fun <T> Sequence<Pair<T, T>>.filterAny(crossinline predicate: (T) -> Boolean) = filter { predicate(it.first) || predicate(it.second) }
-
-fun <T> Triple<T, T, T>.anyEquals(value: T) = first == value || second == value || third == value

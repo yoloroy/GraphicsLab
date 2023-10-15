@@ -27,7 +27,7 @@ value class XYZ(private val list: List<Float>) {
     constructor(x: Float, y: Float, z: Float = 1F) : this(listOf(x, y, z, 1F))
 
     companion object {
-        fun fromOffset(offset: Offset) = XYZ(offset.x, offset.y, 0f)
+        fun fromOffset(offset: Offset, z: Float = 0f) = XYZ(offset.x, offset.y, z)
 
         val ZERO = XYZ(0F, 0F, 0F)
 
